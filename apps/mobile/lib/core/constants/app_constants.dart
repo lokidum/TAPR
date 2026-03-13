@@ -6,4 +6,7 @@ class AppConstants {
   static const int connectTimeoutMs = 15000;
   static const int receiveTimeoutMs = 15000;
   static const int defaultPageSize = 20;
+  static const int maxImageUploadBytes = 10 * 1024 * 1024;
+  static const int maxEvidenceUrls = 5;
+  static const int disputeWindowDays = 7;
 }
