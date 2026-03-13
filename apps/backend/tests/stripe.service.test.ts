@@ -33,6 +33,7 @@ import {
   createConnectAccount,
   createConnectOnboardingUrl,
   createPaymentIntent,
+  createAndConfirmPlatformPayment,
   capturePaymentIntent,
   cancelPaymentIntent,
   refundPaymentIntent,
@@ -216,6 +217,38 @@ describe('createPaymentIntent', () => {
 
   it('returns the PaymentIntent from Stripe', async () => {
     const result = await createPaymentIntent(BASE_PARAMS);
+    expect(result).toBe(PAYMENT_INTENT);
+  });
+});
+
+// ── createAndConfirmPlatformPayment ───────────────────────────────────────────
+
+describe('createAndConfirmPlatformPayment', () => {
+  const PAYMENT_INTENT: Partial<Stripe.PaymentIntent> = {
+    id: 'pi_platform123',
+    status: 'succeeded',
+    amount: 500,
+  };
+
+  beforeEach(() => {
+    mockPaymentIntentsCreate.mockResolvedValue(PAYMENT_INTENT);
+  });
+
+  it('creates with capture_method: automatic and confirm: true', async () => {
+    await createAndConfirmPlatformPayment(500, 'pm_card123', { studioId: 'st-1' });
+
+    expect(mockPaymentIntentsCreate).toHaveBeenCalledWith({
+      amount: 500,
+      currency: 'aud',
+      capture_method: 'automatic',
+      payment_method: 'pm_card123',
+      confirm: true,
+      metadata: { studioId: 'st-1' },
+    });
+  });
+
+  it('returns the PaymentIntent', async () => {
+    const result = await createAndConfirmPlatformPayment(500, 'pm_xyz', {});
     expect(result).toBe(PAYMENT_INTENT);
   });
 });

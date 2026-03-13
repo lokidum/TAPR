@@ -71,6 +71,21 @@ export async function createPaymentIntent(
   });
 }
 
+export async function createAndConfirmPlatformPayment(
+  amountCents: number,
+  paymentMethodId: string,
+  metadata: Record<string, string>
+): Promise<Stripe.PaymentIntent> {
+  return getStripe().paymentIntents.create({
+    amount: amountCents,
+    currency: 'aud',
+    capture_method: 'automatic',
+    payment_method: paymentMethodId,
+    confirm: true,
+    metadata,
+  });
+}
+
 export async function capturePaymentIntent(
   paymentIntentId: string
 ): Promise<Stripe.PaymentIntent> {
