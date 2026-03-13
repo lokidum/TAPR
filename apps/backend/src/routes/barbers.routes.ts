@@ -1,8 +1,15 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import crypto from 'crypto';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../services/prisma.service';
 import { publishToChannel } from '../services/redis.service';
+import {
+  generateUploadPresignedUrl,
+  generateDownloadUrl,
+  objectExists,
+  deleteObject,
+} from '../services/storage.service';
 import { authenticate, requireRole } from '../middleware/auth.middleware';
 import { errorResponse, successResponse } from '../types/api';
 
@@ -41,6 +48,34 @@ const onCallQuerySchema = z.object({
   minLevel: z.coerce.number().int().min(1).max(6).optional(),
   maxLevel: z.coerce.number().int().min(1).max(6).optional(),
 });
+
+const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/quicktime'] as const;
+
+const portfolioUploadUrlSchema = z.object({
+  fileName: z.string().min(1).max(255),
+  mimeType: z.enum(ALLOWED_MIME_TYPES),
+  mediaType: z.enum(['image', 'video']),
+});
+
+const portfolioCreateSchema = z.object({
+  key: z.string().min(1),
+  mediaType: z.enum(['image', 'video']),
+  caption: z.string().max(500).optional(),
+  tags: z.array(z.string().max(50)).optional().default([]),
+});
+
+const portfolioUpdateSchema = z.object({
+  caption: z.string().max(500).nullable().optional(),
+  tags: z.array(z.string().max(50)).optional(),
+  isFeatured: z.boolean().optional(),
+});
+
+const portfolioPaginationSchema = z.object({
+  page: z.coerce.number().int().min(1).optional().default(1),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(20),
+});
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -123,6 +158,154 @@ router.patch(
         res.status(404).json(errorResponse('NOT_FOUND', 'Barber profile not found'));
         return;
       }
+      next(err);
+    }
+  }
+);
+
+// ── POST /barbers/me/portfolio/upload-url ─────────────────────────────────────
+
+router.post(
+  '/me/portfolio/upload-url',
+  authenticate,
+  requireRole('barber'),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { sub: userId } = req.user!;
+      const { fileName, mimeType, mediaType } = portfolioUploadUrlSchema.parse(req.body);
+
+      const barberProfile = await prisma.barberProfile.findUnique({ where: { userId } });
+      if (!barberProfile) {
+        res.status(404).json(errorResponse('NOT_FOUND', 'Barber profile not found'));
+        return;
+      }
+
+      const maxSizeMb = mediaType === 'image' ? 5 : 500;
+
+      // Sanitise fileName to just its extension to prevent path traversal
+      const dotIdx = fileName.lastIndexOf('.');
+      const ext = dotIdx >= 0 ? fileName.slice(dotIdx).toLowerCase() : '';
+      const uuid = crypto.randomUUID();
+      const key = `portfolio/${barberProfile.id}/${uuid}${ext}`;
+
+      const uploadUrl = await generateUploadPresignedUrl(key, mimeType, maxSizeMb);
+      const cdnUrl = generateDownloadUrl(key);
+
+      res.status(200).json(successResponse({ uploadUrl, key, cdnUrl }));
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ── POST /barbers/me/portfolio ────────────────────────────────────────────────
+
+router.post(
+  '/me/portfolio',
+  authenticate,
+  requireRole('barber'),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { sub: userId } = req.user!;
+      const { key, mediaType, caption, tags } = portfolioCreateSchema.parse(req.body);
+
+      const barberProfile = await prisma.barberProfile.findUnique({ where: { userId } });
+      if (!barberProfile) {
+        res.status(404).json(errorResponse('NOT_FOUND', 'Barber profile not found'));
+        return;
+      }
+
+      const exists = await objectExists(key);
+      if (!exists) {
+        res.status(422).json(errorResponse('FILE_NOT_FOUND', 'File not found in S3. Upload it first using the presigned URL.'));
+        return;
+      }
+
+      const cdnUrl = generateDownloadUrl(key);
+
+      const item = await prisma.portfolioItem.create({
+        data: {
+          barberId: barberProfile.id,
+          mediaType,
+          s3Key: key,
+          cdnUrl,
+          caption,
+          tags: tags ?? [],
+        },
+      });
+
+      res.status(201).json(successResponse(item));
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ── PATCH /barbers/me/portfolio/:itemId ───────────────────────────────────────
+
+router.patch(
+  '/me/portfolio/:itemId',
+  authenticate,
+  requireRole('barber'),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { sub: userId } = req.user!;
+      const { itemId } = req.params;
+      const data = portfolioUpdateSchema.parse(req.body);
+
+      const barberProfile = await prisma.barberProfile.findUnique({ where: { userId } });
+      if (!barberProfile) {
+        res.status(404).json(errorResponse('NOT_FOUND', 'Barber profile not found'));
+        return;
+      }
+
+      const item = await prisma.portfolioItem.findFirst({
+        where: { id: itemId, barberId: barberProfile.id },
+      });
+      if (!item) {
+        res.status(404).json(errorResponse('NOT_FOUND', 'Portfolio item not found'));
+        return;
+      }
+
+      const updated = await prisma.portfolioItem.update({ where: { id: itemId }, data });
+
+      res.status(200).json(successResponse(updated));
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ── DELETE /barbers/me/portfolio/:itemId ──────────────────────────────────────
+
+router.delete(
+  '/me/portfolio/:itemId',
+  authenticate,
+  requireRole('barber'),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { sub: userId } = req.user!;
+      const { itemId } = req.params;
+
+      const barberProfile = await prisma.barberProfile.findUnique({ where: { userId } });
+      if (!barberProfile) {
+        res.status(404).json(errorResponse('NOT_FOUND', 'Barber profile not found'));
+        return;
+      }
+
+      const item = await prisma.portfolioItem.findFirst({
+        where: { id: itemId, barberId: barberProfile.id },
+      });
+      if (!item) {
+        res.status(404).json(errorResponse('NOT_FOUND', 'Portfolio item not found'));
+        return;
+      }
+
+      await deleteObject(item.s3Key);
+      await prisma.portfolioItem.delete({ where: { id: itemId } });
+
+      res.status(200).json(successResponse({ message: 'Portfolio item deleted' }));
+    } catch (err) {
       next(err);
     }
   }
@@ -327,6 +510,39 @@ router.get(
       `;
 
       res.status(200).json(successResponse(rows));
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ── GET /barbers/:id/portfolio ────────────────────────────────────────────────
+
+router.get(
+  '/:id/portfolio',
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { id } = req.params;
+
+      if (!UUID_RE.test(id)) {
+        res.status(404).json(errorResponse('NOT_FOUND', 'Barber not found'));
+        return;
+      }
+
+      const { page, limit } = portfolioPaginationSchema.parse(req.query);
+      const skip = (page - 1) * limit;
+
+      const [items, total] = await Promise.all([
+        prisma.portfolioItem.findMany({
+          where: { barberId: id },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit,
+        }),
+        prisma.portfolioItem.count({ where: { barberId: id } }),
+      ]);
+
+      res.status(200).json(successResponse({ items, total, page, limit }));
     } catch (err) {
       next(err);
     }
