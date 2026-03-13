@@ -7,6 +7,7 @@ import studiosRouter from './studios.routes';
 import bookingsRouter from './bookings.routes';
 import chairsRouter from './chairs.routes';
 import notificationsRouter from './notifications.routes';
+import partnershipsRouter from './partnerships.routes';
 
 const router = Router();
 
@@ -18,5 +19,6 @@ router.use('/studios', studiosRouter);
 router.use('/bookings', bookingsRouter);
 router.use('/chairs', chairsRouter);
 router.use('/notifications', notificationsRouter);
+router.use('/partnerships', partnershipsRouter);
 
 export default router;
