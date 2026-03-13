@@ -6,6 +6,8 @@ const mockAccountLinksCreate = jest.fn();
 const mockAccountsCreate = jest.fn();
 const mockPaymentIntentsCreate = jest.fn();
 const mockPaymentIntentsCapture = jest.fn();
+const mockPaymentIntentsCancel = jest.fn();
+const mockChargesRetrieve = jest.fn();
 const mockRefundsCreate = jest.fn();
 const mockTransfersCreate = jest.fn();
 const mockWebhooksConstructEvent = jest.fn();
@@ -14,7 +16,12 @@ jest.mock('stripe', () =>
   jest.fn().mockImplementation(() => ({
     accountLinks: { create: mockAccountLinksCreate },
     accounts: { create: mockAccountsCreate },
-    paymentIntents: { create: mockPaymentIntentsCreate, capture: mockPaymentIntentsCapture },
+    paymentIntents: {
+      create: mockPaymentIntentsCreate,
+      capture: mockPaymentIntentsCapture,
+      cancel: mockPaymentIntentsCancel,
+    },
+    charges: { retrieve: mockChargesRetrieve },
     refunds: { create: mockRefundsCreate },
     transfers: { create: mockTransfersCreate },
     webhooks: { constructEvent: mockWebhooksConstructEvent },
@@ -26,8 +33,12 @@ import {
   createConnectAccount,
   createConnectOnboardingUrl,
   createPaymentIntent,
+  createChairRentalPaymentIntent,
+  createAndConfirmPlatformPayment,
   capturePaymentIntent,
+  cancelPaymentIntent,
   refundPaymentIntent,
+  retrieveCharge,
   createTransfer,
   constructWebhookEvent,
 } from '../src/services/stripe.service';
@@ -211,6 +222,68 @@ describe('createPaymentIntent', () => {
   });
 });
 
+// ── createChairRentalPaymentIntent ────────────────────────────────────────────
+
+describe('createChairRentalPaymentIntent', () => {
+  const PAYMENT_INTENT: Partial<Stripe.PaymentIntent> = {
+    id: 'pi_chair123',
+    status: 'requires_payment_method',
+    amount: 10000,
+  };
+
+  beforeEach(() => {
+    mockPaymentIntentsCreate.mockResolvedValue(PAYMENT_INTENT);
+  });
+
+  it('creates with capture_method: manual and transfer to studio', async () => {
+    await createChairRentalPaymentIntent({
+      amountCents: 10000,
+      studioStripeAccountId: 'acct_studio123',
+      metadata: { rentalId: 'r-1' },
+    });
+
+    expect(mockPaymentIntentsCreate).toHaveBeenCalledWith({
+      amount: 10000,
+      currency: 'aud',
+      capture_method: 'manual',
+      transfer_data: { destination: 'acct_studio123' },
+      metadata: { rentalId: 'r-1' },
+    });
+  });
+});
+
+// ── createAndConfirmPlatformPayment ───────────────────────────────────────────
+
+describe('createAndConfirmPlatformPayment', () => {
+  const PAYMENT_INTENT: Partial<Stripe.PaymentIntent> = {
+    id: 'pi_platform123',
+    status: 'succeeded',
+    amount: 500,
+  };
+
+  beforeEach(() => {
+    mockPaymentIntentsCreate.mockResolvedValue(PAYMENT_INTENT);
+  });
+
+  it('creates with capture_method: automatic and confirm: true', async () => {
+    await createAndConfirmPlatformPayment(500, 'pm_card123', { studioId: 'st-1' });
+
+    expect(mockPaymentIntentsCreate).toHaveBeenCalledWith({
+      amount: 500,
+      currency: 'aud',
+      capture_method: 'automatic',
+      payment_method: 'pm_card123',
+      confirm: true,
+      metadata: { studioId: 'st-1' },
+    });
+  });
+
+  it('returns the PaymentIntent', async () => {
+    const result = await createAndConfirmPlatformPayment(500, 'pm_xyz', {});
+    expect(result).toBe(PAYMENT_INTENT);
+  });
+});
+
 // ── capturePaymentIntent ──────────────────────────────────────────────────────
 
 describe('capturePaymentIntent', () => {
@@ -228,6 +301,52 @@ describe('capturePaymentIntent', () => {
   it('returns the captured PaymentIntent', async () => {
     const result = await capturePaymentIntent('pi_test123');
     expect(result).toBe(CAPTURED);
+  });
+});
+
+// ── cancelPaymentIntent ───────────────────────────────────────────────────────
+
+describe('cancelPaymentIntent', () => {
+  const CANCELLED: Partial<Stripe.PaymentIntent> = { id: 'pi_test123', status: 'canceled' };
+
+  beforeEach(() => {
+    mockPaymentIntentsCancel.mockResolvedValue(CANCELLED);
+  });
+
+  it('calls paymentIntents.cancel with the intent ID', async () => {
+    await cancelPaymentIntent('pi_test123');
+    expect(mockPaymentIntentsCancel).toHaveBeenCalledWith('pi_test123');
+  });
+
+  it('returns the cancelled PaymentIntent', async () => {
+    const result = await cancelPaymentIntent('pi_test123');
+    expect(result).toBe(CANCELLED);
+  });
+});
+
+// ── retrieveCharge ─────────────────────────────────────────────────────────────
+
+describe('retrieveCharge', () => {
+  const CHARGE: Partial<Stripe.Charge> = {
+    id: 'ch_test123',
+    payment_intent: 'pi_test123',
+  };
+
+  beforeEach(() => {
+    mockChargesRetrieve.mockResolvedValue(CHARGE);
+  });
+
+  it('calls charges.retrieve with charge ID and expand', async () => {
+    await retrieveCharge('ch_test123');
+
+    expect(mockChargesRetrieve).toHaveBeenCalledWith('ch_test123', {
+      expand: ['payment_intent'],
+    });
+  });
+
+  it('returns the Charge object', async () => {
+    const result = await retrieveCharge('ch_test123');
+    expect(result).toBe(CHARGE);
   });
 });
 

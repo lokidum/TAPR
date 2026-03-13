@@ -71,6 +71,40 @@ export async function createPaymentIntent(
   });
 }
 
+export interface CreateChairRentalPaymentIntentParams {
+  amountCents: number;
+  studioStripeAccountId: string;
+  metadata: Record<string, string>;
+}
+
+export async function createChairRentalPaymentIntent(
+  params: CreateChairRentalPaymentIntentParams
+): Promise<Stripe.PaymentIntent> {
+  const { amountCents, studioStripeAccountId, metadata } = params;
+  return getStripe().paymentIntents.create({
+    amount: amountCents,
+    currency: 'aud',
+    capture_method: 'manual',
+    transfer_data: { destination: studioStripeAccountId },
+    metadata,
+  });
+}
+
+export async function createAndConfirmPlatformPayment(
+  amountCents: number,
+  paymentMethodId: string,
+  metadata: Record<string, string>
+): Promise<Stripe.PaymentIntent> {
+  return getStripe().paymentIntents.create({
+    amount: amountCents,
+    currency: 'aud',
+    capture_method: 'automatic',
+    payment_method: paymentMethodId,
+    confirm: true,
+    metadata,
+  });
+}
+
 export async function capturePaymentIntent(
   paymentIntentId: string
 ): Promise<Stripe.PaymentIntent> {
@@ -87,6 +121,12 @@ export async function refundPaymentIntent(
   });
 }
 
+export async function cancelPaymentIntent(
+  paymentIntentId: string
+): Promise<Stripe.PaymentIntent> {
+  return getStripe().paymentIntents.cancel(paymentIntentId);
+}
+
 // ── Transfers (studio payouts) ────────────────────────────────────────────────
 
 export async function createTransfer(
@@ -100,6 +140,12 @@ export async function createTransfer(
     destination: destinationAccountId,
     metadata,
   });
+}
+
+// ── Charges (for dispute resolution) ───────────────────────────────────────────
+
+export async function retrieveCharge(chargeId: string): Promise<Stripe.Charge> {
+  return getStripe().charges.retrieve(chargeId, { expand: ['payment_intent'] });
 }
 
 // ── Webhooks ──────────────────────────────────────────────────────────────────

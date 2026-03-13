@@ -120,6 +120,7 @@ model User {
   studioProfile      StudioProfile?
   bookingsAsConsumer Booking[]       @relation("ConsumerBookings")
   notifications      Notification[]
+  deviceTokens       DeviceToken[]
   organizedEvents    Event[]         @relation("EventOrganizer")
   disputesRaised     Dispute[]       @relation("DisputeRaisedBy")
   disputesAgainst    Dispute[]       @relation("DisputeAgainst")
@@ -153,6 +154,8 @@ model BarberProfile {
   isSustainable         Boolean   @default(false) @map("is_sustainable")
   sustainableVerifiedAt DateTime? @map("sustainable_verified_at") @db.Timestamptz
   stripeAccountId       String?   @map("stripe_account_id")
+  isLevel6Eligible      Boolean   @default(false) @map("is_level6_eligible")
+  levelUpPending        Boolean   @default(false) @map("level_up_pending")
   createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz
 
@@ -359,6 +362,18 @@ model Notification {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("notifications")
+}
+
+model DeviceToken {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  token     String   @unique
+  platform  String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("device_tokens")
 }
 
 model Dispute {

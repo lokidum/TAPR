@@ -6,6 +6,7 @@ import cookieParser from 'cookie-parser';
 import serverless from 'serverless-http';
 import { config } from './config';
 import router from './routes';
+import webhooksRouter from './routes/webhooks.routes';
 import { errorHandler } from './middleware/errorHandler';
 import { unauthenticatedLimiter } from './middleware/rateLimiter';
 import logger from './utils/logger';
@@ -27,6 +28,13 @@ app.use(
     },
     credentials: true,
   })
+);
+
+// Stripe webhook — raw body required, must be before express.json()
+app.use(
+  '/api/v1/webhooks',
+  express.raw({ type: 'application/json' }),
+  webhooksRouter
 );
 
 // Body parsers
