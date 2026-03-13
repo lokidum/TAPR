@@ -33,6 +33,7 @@ import {
   createConnectAccount,
   createConnectOnboardingUrl,
   createPaymentIntent,
+  createChairRentalPaymentIntent,
   createAndConfirmPlatformPayment,
   capturePaymentIntent,
   cancelPaymentIntent,
@@ -218,6 +219,36 @@ describe('createPaymentIntent', () => {
   it('returns the PaymentIntent from Stripe', async () => {
     const result = await createPaymentIntent(BASE_PARAMS);
     expect(result).toBe(PAYMENT_INTENT);
+  });
+});
+
+// ── createChairRentalPaymentIntent ────────────────────────────────────────────
+
+describe('createChairRentalPaymentIntent', () => {
+  const PAYMENT_INTENT: Partial<Stripe.PaymentIntent> = {
+    id: 'pi_chair123',
+    status: 'requires_payment_method',
+    amount: 10000,
+  };
+
+  beforeEach(() => {
+    mockPaymentIntentsCreate.mockResolvedValue(PAYMENT_INTENT);
+  });
+
+  it('creates with capture_method: manual and transfer to studio', async () => {
+    await createChairRentalPaymentIntent({
+      amountCents: 10000,
+      studioStripeAccountId: 'acct_studio123',
+      metadata: { rentalId: 'r-1' },
+    });
+
+    expect(mockPaymentIntentsCreate).toHaveBeenCalledWith({
+      amount: 10000,
+      currency: 'aud',
+      capture_method: 'manual',
+      transfer_data: { destination: 'acct_studio123' },
+      metadata: { rentalId: 'r-1' },
+    });
   });
 });
 

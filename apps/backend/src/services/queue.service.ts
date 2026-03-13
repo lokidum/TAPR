@@ -58,3 +58,37 @@ export interface NotificationJobPayload {
 export async function enqueueNotification(payload: NotificationJobPayload): Promise<void> {
   await getBookingQueue().add('notification_job', payload);
 }
+
+export interface EscrowReleaseJobPayload {
+  rentalId: string;
+  paymentIntentId: string;
+  studioStripeAccountId: string;
+}
+
+const ESCROW_JOB_PREFIX = 'escrow_release:';
+
+export async function enqueueEscrowReleaseJob(
+  payload: EscrowReleaseJobPayload,
+  delayMs: number
+): Promise<string> {
+  const job = await getBookingQueue().add('escrow_release_job', payload, {
+    delay: delayMs,
+    jobId: `${ESCROW_JOB_PREFIX}${payload.rentalId}`,
+  });
+  return job.id ?? job.name ?? payload.rentalId;
+}
+
+export async function cancelEscrowReleaseJob(rentalId: string): Promise<boolean> {
+  const queue = getBookingQueue();
+  const jobId = `${ESCROW_JOB_PREFIX}${rentalId}`;
+  try {
+    const job = await queue.getJob(jobId);
+    if (job) {
+      await job.remove();
+      return true;
+    }
+  } catch {
+    // Job may not exist (already completed or never added)
+  }
+  return false;
+}

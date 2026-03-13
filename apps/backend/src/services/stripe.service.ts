@@ -71,6 +71,25 @@ export async function createPaymentIntent(
   });
 }
 
+export interface CreateChairRentalPaymentIntentParams {
+  amountCents: number;
+  studioStripeAccountId: string;
+  metadata: Record<string, string>;
+}
+
+export async function createChairRentalPaymentIntent(
+  params: CreateChairRentalPaymentIntentParams
+): Promise<Stripe.PaymentIntent> {
+  const { amountCents, studioStripeAccountId, metadata } = params;
+  return getStripe().paymentIntents.create({
+    amount: amountCents,
+    currency: 'aud',
+    capture_method: 'manual',
+    transfer_data: { destination: studioStripeAccountId },
+    metadata,
+  });
+}
+
 export async function createAndConfirmPlatformPayment(
   amountCents: number,
   paymentMethodId: string,
