@@ -120,6 +120,7 @@ model User {
   studioProfile      StudioProfile?
   bookingsAsConsumer Booking[]       @relation("ConsumerBookings")
   notifications      Notification[]
+  deviceTokens       DeviceToken[]
   organizedEvents    Event[]         @relation("EventOrganizer")
   disputesRaised     Dispute[]       @relation("DisputeRaisedBy")
   disputesAgainst    Dispute[]       @relation("DisputeAgainst")
@@ -361,6 +362,18 @@ model Notification {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("notifications")
+}
+
+model DeviceToken {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  token     String   @unique
+  platform  String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("device_tokens")
 }
 
 model Dispute {

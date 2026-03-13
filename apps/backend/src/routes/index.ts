@@ -6,6 +6,7 @@ import barbersRouter from './barbers.routes';
 import studiosRouter from './studios.routes';
 import bookingsRouter from './bookings.routes';
 import chairsRouter from './chairs.routes';
+import notificationsRouter from './notifications.routes';
 
 const router = Router();
 
@@ -16,5 +17,6 @@ router.use('/barbers', barbersRouter);
 router.use('/studios', studiosRouter);
 router.use('/bookings', bookingsRouter);
 router.use('/chairs', chairsRouter);
+router.use('/notifications', notificationsRouter);
 
 export default router;
