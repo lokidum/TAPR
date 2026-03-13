@@ -6,46 +6,41 @@ import 'package:tapr/core/network/api_exception.dart';
 class ErrorInterceptor extends Interceptor {
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) {
-    if (err.type == DioExceptionType.connectionTimeout ||
-        err.type == DioExceptionType.receiveTimeout ||
-        err.type == DioExceptionType.sendTimeout) {
-      handler.reject(
-        DioException(
-          requestOptions: err.requestOptions,
-          error: const ApiException(
-            message: 'Connection timed out. Please check your internet.',
-          ),
-          type: err.type,
-        ),
-      );
-      return;
-    }
+    final appException = _mapToAppException(err);
+    handler.reject(
+      DioException(
+        requestOptions: err.requestOptions,
+        response: err.response,
+        error: appException,
+        type: err.type,
+      ),
+    );
+  }
 
-    if (err.error is SocketException) {
-      handler.reject(
-        DioException(
-          requestOptions: err.requestOptions,
-          error: const ApiException(
-            message: 'No internet connection. Please check your network.',
-          ),
-          type: DioExceptionType.connectionError,
-        ),
-      );
-      return;
-    }
+  AppException _mapToAppException(DioException err) {
+    switch (err.type) {
+      case DioExceptionType.connectionTimeout:
+      case DioExceptionType.receiveTimeout:
+      case DioExceptionType.sendTimeout:
+        return AppException.timeout;
 
-    if (err.response != null) {
-      handler.reject(
-        DioException(
-          requestOptions: err.requestOptions,
-          response: err.response,
-          error: ApiException.fromDioError(err),
-          type: err.type,
-        ),
-      );
-      return;
-    }
+      case DioExceptionType.connectionError:
+        return AppException.noConnection;
 
-    handler.next(err);
+      case DioExceptionType.badResponse:
+        if (err.response != null) {
+          return AppException.fromResponse(
+            err.response!.statusCode,
+            err.response!.data,
+          );
+        }
+        return AppException.unknown;
+
+      default:
+        if (err.error is SocketException) {
+          return AppException.noConnection;
+        }
+        return AppException.unknown;
+    }
   }
 }

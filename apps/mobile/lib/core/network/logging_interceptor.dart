@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:logger/logger.dart';
 
 final _logger = Logger(
@@ -11,19 +12,25 @@ final _logger = Logger(
 class LoggingInterceptor extends Interceptor {
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
-    _logger.d('${options.method} ${options.uri}');
+    if (kDebugMode) {
+      _logger.d('>>> ${options.method} ${options.uri}');
+    }
     handler.next(options);
   }
 
   @override
   void onResponse(Response<dynamic> response, ResponseInterceptorHandler handler) {
-    _logger.d('${response.statusCode} ${response.requestOptions.uri}');
+    if (kDebugMode) {
+      _logger.d('<<< ${response.statusCode} ${response.requestOptions.uri}');
+    }
     handler.next(response);
   }
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) {
-    _logger.e('${err.response?.statusCode ?? 'ERR'} ${err.requestOptions.uri}');
+    if (kDebugMode) {
+      _logger.e('!!! ${err.response?.statusCode ?? 'ERR'} ${err.requestOptions.uri}');
+    }
     handler.next(err);
   }
 }

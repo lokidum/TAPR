@@ -1,16 +1,22 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:tapr/core/constants/app_constants.dart';
 import 'package:tapr/core/network/auth_interceptor.dart';
 import 'package:tapr/core/network/error_interceptor.dart';
 import 'package:tapr/core/network/logging_interceptor.dart';
+import 'package:tapr/core/network/token_storage.dart';
+import 'package:tapr/features/auth/auth_notifier.dart';
+
+const _baseUrl = String.fromEnvironment(
+  'API_BASE_URL',
+  defaultValue: 'https://api.tapr.com.au/api/v1',
+);
 
 final dioProvider = Provider<Dio>((ref) {
   final dio = Dio(
     BaseOptions(
-      baseUrl: AppConstants.apiBaseUrl,
-      connectTimeout: const Duration(milliseconds: AppConstants.connectTimeoutMs),
-      receiveTimeout: const Duration(milliseconds: AppConstants.receiveTimeoutMs),
+      baseUrl: _baseUrl,
+      connectTimeout: const Duration(seconds: 15),
+      receiveTimeout: const Duration(seconds: 15),
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
@@ -18,8 +24,15 @@ final dioProvider = Provider<Dio>((ref) {
     ),
   );
 
+  final tokenStorage = ref.read(tokenStorageProvider);
+  final authNotifier = ref.read(authNotifierProvider.notifier);
+
   dio.interceptors.addAll([
-    AuthInterceptor(ref),
+    AuthInterceptor(
+      tokenStorage: tokenStorage,
+      dio: dio,
+      onAuthFailure: () => authNotifier.setUnauthenticated(),
+    ),
     ErrorInterceptor(),
     LoggingInterceptor(),
   ]);

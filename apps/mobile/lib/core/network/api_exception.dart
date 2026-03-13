@@ -1,5 +1,5 @@
-class ApiException implements Exception {
-  const ApiException({
+class AppException implements Exception {
+  const AppException({
     required this.message,
     this.statusCode,
     this.code,
@@ -9,24 +9,14 @@ class ApiException implements Exception {
   final int? statusCode;
   final String? code;
 
-  factory ApiException.fromDioError(dynamic error) {
-    if (error.response?.data case {'error': {'message': final String msg}}) {
-      return ApiException(
-        message: msg,
-        statusCode: error.response?.statusCode as int?,
-        code: error.response?.data['error']['code'] as String?,
-      );
-    }
-
-    return ApiException(
-      message: _mapStatusCode(error.response?.statusCode as int?),
-      statusCode: error.response?.statusCode as int?,
-    );
+  String get displayMessage {
+    if (message.isNotEmpty) return message;
+    return _fallbackMessage;
   }
 
-  static String _mapStatusCode(int? code) {
-    if (code == null) return 'An unexpected error occurred. Please try again.';
-    return switch (code) {
+  String get _fallbackMessage {
+    if (statusCode == null) return 'An unexpected error occurred. Please try again.';
+    return switch (statusCode!) {
       400 => 'Invalid request. Please check your input.',
       401 => 'Session expired. Please sign in again.',
       403 => 'You don\'t have permission to do this.',
@@ -39,6 +29,37 @@ class ApiException implements Exception {
     };
   }
 
+  factory AppException.fromResponse(int? statusCode, dynamic data) {
+    if (data case {'error': {'message': final String msg}}) {
+      return AppException(
+        message: msg,
+        statusCode: statusCode,
+        code: data['error']['code'] as String?,
+      );
+    }
+
+    if (data case {'error': {'message': final String msg, 'code': final String code}}) {
+      return AppException(message: msg, statusCode: statusCode, code: code);
+    }
+
+    return AppException(
+      message: '',
+      statusCode: statusCode,
+    );
+  }
+
+  static const timeout = AppException(
+    message: 'Connection timed out. Please check your internet.',
+  );
+
+  static const noConnection = AppException(
+    message: 'No internet connection. Please check your network.',
+  );
+
+  static const unknown = AppException(
+    message: 'An unexpected error occurred. Please try again.',
+  );
+
   @override
-  String toString() => message;
+  String toString() => 'AppException($code: $displayMessage)';
 }
