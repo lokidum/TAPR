@@ -7,6 +7,7 @@ const mockAccountsCreate = jest.fn();
 const mockPaymentIntentsCreate = jest.fn();
 const mockPaymentIntentsCapture = jest.fn();
 const mockPaymentIntentsCancel = jest.fn();
+const mockChargesRetrieve = jest.fn();
 const mockRefundsCreate = jest.fn();
 const mockTransfersCreate = jest.fn();
 const mockWebhooksConstructEvent = jest.fn();
@@ -20,6 +21,7 @@ jest.mock('stripe', () =>
       capture: mockPaymentIntentsCapture,
       cancel: mockPaymentIntentsCancel,
     },
+    charges: { retrieve: mockChargesRetrieve },
     refunds: { create: mockRefundsCreate },
     transfers: { create: mockTransfersCreate },
     webhooks: { constructEvent: mockWebhooksConstructEvent },
@@ -34,6 +36,7 @@ import {
   capturePaymentIntent,
   cancelPaymentIntent,
   refundPaymentIntent,
+  retrieveCharge,
   createTransfer,
   constructWebhookEvent,
 } from '../src/services/stripe.service';
@@ -254,6 +257,32 @@ describe('cancelPaymentIntent', () => {
   it('returns the cancelled PaymentIntent', async () => {
     const result = await cancelPaymentIntent('pi_test123');
     expect(result).toBe(CANCELLED);
+  });
+});
+
+// ── retrieveCharge ─────────────────────────────────────────────────────────────
+
+describe('retrieveCharge', () => {
+  const CHARGE: Partial<Stripe.Charge> = {
+    id: 'ch_test123',
+    payment_intent: 'pi_test123',
+  };
+
+  beforeEach(() => {
+    mockChargesRetrieve.mockResolvedValue(CHARGE);
+  });
+
+  it('calls charges.retrieve with charge ID and expand', async () => {
+    await retrieveCharge('ch_test123');
+
+    expect(mockChargesRetrieve).toHaveBeenCalledWith('ch_test123', {
+      expand: ['payment_intent'],
+    });
+  });
+
+  it('returns the Charge object', async () => {
+    const result = await retrieveCharge('ch_test123');
+    expect(result).toBe(CHARGE);
   });
 });
 

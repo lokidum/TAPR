@@ -46,3 +46,15 @@ export async function enqueueReviewRequest(
 ): Promise<void> {
   await getBookingQueue().add('review_request_job', payload, { delay: delayMs });
 }
+
+export interface NotificationJobPayload {
+  userId: string;
+  type: string;
+  title: string;
+  body: string;
+  data?: Record<string, unknown>;
+}
+
+export async function enqueueNotification(payload: NotificationJobPayload): Promise<void> {
+  await getBookingQueue().add('notification_job', payload);
+}

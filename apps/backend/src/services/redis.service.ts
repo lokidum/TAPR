@@ -85,6 +85,19 @@ export async function deleteOTP(phone: string): Promise<void> {
   await getRedisClient().del(`${OTP_PREFIX}${phone}`);
 }
 
+// ── Stripe webhook idempotency ─────────────────────────────────────────────────
+
+const STRIPE_EVENT_PREFIX = 'stripe_event:';
+
+export async function isStripeEventProcessed(eventId: string): Promise<boolean> {
+  const val = await getRedisClient().get(`${STRIPE_EVENT_PREFIX}${eventId}`);
+  return val === '1';
+}
+
+export async function setStripeEventProcessed(eventId: string, ttlSeconds = 86400 * 7): Promise<void> {
+  await getRedisClient().setex(`${STRIPE_EVENT_PREFIX}${eventId}`, ttlSeconds, '1');
+}
+
 // ── Idempotency ───────────────────────────────────────────────────────────────
 
 const IDEMPOTENCY_PREFIX = 'idempotency:';

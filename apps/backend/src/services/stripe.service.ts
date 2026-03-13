@@ -108,6 +108,12 @@ export async function createTransfer(
   });
 }
 
+// ── Charges (for dispute resolution) ───────────────────────────────────────────
+
+export async function retrieveCharge(chargeId: string): Promise<Stripe.Charge> {
+  return getStripe().charges.retrieve(chargeId, { expand: ['payment_intent'] });
+}
+
 // ── Webhooks ──────────────────────────────────────────────────────────────────
 
 export function constructWebhookEvent(payload: Buffer, signature: string): Stripe.Event {

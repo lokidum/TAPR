@@ -9,6 +9,8 @@ import {
   getOTP,
   deleteOTP,
   incrementRateLimit,
+  isStripeEventProcessed,
+  setStripeEventProcessed,
   getRedisClient,
 } from '../src/services/redis.service';
 
@@ -118,6 +120,28 @@ describe('deleteOTP', () => {
 
   it('does not throw when deleting a non-existent OTP', async () => {
     await expect(deleteOTP('+61400000099')).resolves.toBeUndefined();
+  });
+});
+
+// ── Stripe webhook idempotency ───────────────────────────────────────────────
+
+describe('isStripeEventProcessed / setStripeEventProcessed', () => {
+  it('returns false before event is set', async () => {
+    const result = await isStripeEventProcessed('evt_123');
+    expect(result).toBe(false);
+  });
+
+  it('returns true after event is set', async () => {
+    await setStripeEventProcessed('evt_123');
+    const result = await isStripeEventProcessed('evt_123');
+    expect(result).toBe(true);
+  });
+
+  it('stores event with TTL', async () => {
+    await setStripeEventProcessed('evt_456', 60);
+    const ttl = await getRedisClient().ttl('stripe_event:evt_456');
+    expect(ttl).toBeGreaterThan(0);
+    expect(ttl).toBeLessThanOrEqual(60);
   });
 });
 
