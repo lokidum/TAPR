@@ -87,6 +87,12 @@ export async function refundPaymentIntent(
   });
 }
 
+export async function cancelPaymentIntent(
+  paymentIntentId: string
+): Promise<Stripe.PaymentIntent> {
+  return getStripe().paymentIntents.cancel(paymentIntentId);
+}
+
 // ── Transfers (studio payouts) ────────────────────────────────────────────────
 
 export async function createTransfer(

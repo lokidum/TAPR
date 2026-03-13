@@ -6,6 +6,7 @@ const mockAccountLinksCreate = jest.fn();
 const mockAccountsCreate = jest.fn();
 const mockPaymentIntentsCreate = jest.fn();
 const mockPaymentIntentsCapture = jest.fn();
+const mockPaymentIntentsCancel = jest.fn();
 const mockRefundsCreate = jest.fn();
 const mockTransfersCreate = jest.fn();
 const mockWebhooksConstructEvent = jest.fn();
@@ -14,7 +15,11 @@ jest.mock('stripe', () =>
   jest.fn().mockImplementation(() => ({
     accountLinks: { create: mockAccountLinksCreate },
     accounts: { create: mockAccountsCreate },
-    paymentIntents: { create: mockPaymentIntentsCreate, capture: mockPaymentIntentsCapture },
+    paymentIntents: {
+      create: mockPaymentIntentsCreate,
+      capture: mockPaymentIntentsCapture,
+      cancel: mockPaymentIntentsCancel,
+    },
     refunds: { create: mockRefundsCreate },
     transfers: { create: mockTransfersCreate },
     webhooks: { constructEvent: mockWebhooksConstructEvent },
@@ -27,6 +32,7 @@ import {
   createConnectOnboardingUrl,
   createPaymentIntent,
   capturePaymentIntent,
+  cancelPaymentIntent,
   refundPaymentIntent,
   createTransfer,
   constructWebhookEvent,
@@ -228,6 +234,26 @@ describe('capturePaymentIntent', () => {
   it('returns the captured PaymentIntent', async () => {
     const result = await capturePaymentIntent('pi_test123');
     expect(result).toBe(CAPTURED);
+  });
+});
+
+// ── cancelPaymentIntent ───────────────────────────────────────────────────────
+
+describe('cancelPaymentIntent', () => {
+  const CANCELLED: Partial<Stripe.PaymentIntent> = { id: 'pi_test123', status: 'canceled' };
+
+  beforeEach(() => {
+    mockPaymentIntentsCancel.mockResolvedValue(CANCELLED);
+  });
+
+  it('calls paymentIntents.cancel with the intent ID', async () => {
+    await cancelPaymentIntent('pi_test123');
+    expect(mockPaymentIntentsCancel).toHaveBeenCalledWith('pi_test123');
+  });
+
+  it('returns the cancelled PaymentIntent', async () => {
+    const result = await cancelPaymentIntent('pi_test123');
+    expect(result).toBe(CANCELLED);
   });
 });
 
