@@ -48,3 +48,24 @@ A three-sided mobile marketplace for the barbering industry. Three user types:
 Ask before making architectural decisions. Prefer the simplest solution that fits
 the existing patterns. If something seems wrong with the spec, say so explicitly
 rather than quietly doing it a different way.
+
+Routine 
+Morning (Sessions 1-4):
+- Core backend or Flutter work
+- Write tests immediately after building each feature
+- Commit after each session
+
+Afternoon (Sessions 5-8):
+- Continue feature work
+- Run full test suite mid-afternoon: npm test && flutter test
+- Fix any regressions before adding new code
+
+Evening (Sessions 9-10):
+- Review and clean up the day's work
+- Push to develop branch
+- Check GitHub Actions pass
+- Plan tomorrow's sessions
+
+Daily commit rule:
+Never end a day without a passing test suite.
+If tests are failing, fix them before closing the laptop.

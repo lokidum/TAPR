@@ -85,6 +85,22 @@ export async function deleteOTP(phone: string): Promise<void> {
   await getRedisClient().del(`${OTP_PREFIX}${phone}`);
 }
 
+// ── Idempotency ───────────────────────────────────────────────────────────────
+
+const IDEMPOTENCY_PREFIX = 'idempotency:';
+
+export async function setIdempotencyResponse(
+  key: string,
+  responseJson: string,
+  ttlSeconds: number
+): Promise<void> {
+  await getRedisClient().setex(`${IDEMPOTENCY_PREFIX}${key}`, ttlSeconds, responseJson);
+}
+
+export async function getIdempotencyResponse(key: string): Promise<string | null> {
+  return getRedisClient().get(`${IDEMPOTENCY_PREFIX}${key}`);
+}
+
 // ── Pub/sub ───────────────────────────────────────────────────────────────────
 
 export async function publishToChannel(channel: string, message: string): Promise<void> {

@@ -152,6 +152,7 @@ model BarberProfile {
   certDocumentUrl       String?   @map("cert_document_url")
   isSustainable         Boolean   @default(false) @map("is_sustainable")
   sustainableVerifiedAt DateTime? @map("sustainable_verified_at") @db.Timestamptz
+  stripeAccountId       String?   @map("stripe_account_id")
   createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz
 
