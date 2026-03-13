@@ -1,0 +1,35 @@
+# Flutter
+apps/mobile/.dart_tool/
+apps/mobile/build/
+apps/mobile/*.g.dart
+apps/mobile/google-services.json
+apps/mobile/GoogleService-Info.plist
+
+# Node
+apps/backend/node_modules/
+apps/backend/dist/
+apps/backend/.env
+apps/backend/.env.*
+
+# Secrets - never commit these
+*.pem
+*.p8
+*.key
+.env
+.env.local
+.env.staging
+.env.production
+secrets/
+
+# Terraform state
+infrastructure/.terraform/
+infrastructure/*.tfstate
+infrastructure/*.tfstate.backup
+infrastructure/*.tfvars
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code
+.claude/settings.local.json
