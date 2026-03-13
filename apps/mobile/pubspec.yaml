@@ -1,0 +1,86 @@
+name: tapr
+description: "TAPR — The barbering marketplace"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # State management
+  flutter_riverpod: ^2.5.1
+  riverpod_annotation: ^2.3.5
+
+  # Navigation
+  go_router: ^14.0.0
+
+  # Theming / fonts
+  google_fonts: ^6.2.1
+
+  # Storage
+  flutter_secure_storage: ^9.2.2
+  shared_preferences: ^2.2.3
+
+  # Networking
+  dio: ^5.4.3
+  retrofit: ^4.1.0
+  json_annotation: ^4.9.0
+
+  # Location / Maps
+  geolocator: ^12.0.0
+  google_maps_flutter: ^2.6.0
+
+  # Media
+  video_player: ^2.8.6
+  chewie: ^1.8.1
+  image_picker: ^1.0.7
+  cached_network_image: ^3.3.1
+
+  # Firebase / Push
+  firebase_core: ^3.0.0
+  firebase_messaging: ^15.0.0
+  flutter_local_notifications: ^17.0.0
+
+  # Pagination
+  infinite_scroll_pagination: ^4.0.0
+
+  # Internationalisation
+  intl: ^0.19.0
+
+  # Error tracking
+  sentry_flutter: ^8.3.0
+
+  # Auth
+  sign_in_with_apple: ^6.1.0
+  google_sign_in: ^6.2.1
+
+  # Payments
+  flutter_stripe: ^10.1.0
+
+  # Permissions
+  permission_handler: ^11.3.1
+
+  # Deep links
+  app_links: ^6.1.0
+
+  # Logging
+  logger: ^2.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  build_runner: ^2.4.9
+  riverpod_generator: ^2.4.0
+  retrofit_generator: ^8.1.0
+  json_serializable: ^6.8.0
+  flutter_lints: ^4.0.0
+  mocktail: ^1.0.3
+
+flutter:
+  uses-material-design: true
