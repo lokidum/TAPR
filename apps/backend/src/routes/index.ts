@@ -9,8 +9,12 @@ import chairsRouter from './chairs.routes';
 import notificationsRouter from './notifications.routes';
 import partnershipsRouter from './partnerships.routes';
 import eventsRouter from './events.routes';
+import disputesRouter, { attachBookingDisputeRoute } from './disputes.routes';
+import adminRouter from './admin.routes';
 
 const router = Router();
+
+attachBookingDisputeRoute(bookingsRouter);
 
 router.use('/health', healthRouter);
 router.use('/auth', authRouter);
@@ -22,5 +26,7 @@ router.use('/chairs', chairsRouter);
 router.use('/notifications', notificationsRouter);
 router.use('/partnerships', partnershipsRouter);
 router.use('/events', eventsRouter);
+router.use('/disputes', disputesRouter);
+router.use('/admin', adminRouter);
 
 export default router;
