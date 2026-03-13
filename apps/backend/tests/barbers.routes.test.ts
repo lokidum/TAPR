@@ -7,7 +7,11 @@ jest.mock('../src/services/prisma.service', () => ({
       update: jest.fn(),
     },
     $queryRaw: jest.fn(),
+    $executeRaw: jest.fn(),
   },
+}));
+jest.mock('../src/services/redis.service', () => ({
+  publishToChannel: jest.fn(),
 }));
 
 import request from 'supertest';
@@ -15,6 +19,7 @@ import express from 'express';
 import cookieParser from 'cookie-parser';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../src/services/prisma.service';
+import * as redisService from '../src/services/redis.service';
 import barbersRouter from '../src/routes/barbers.routes';
 import { errorHandler } from '../src/middleware/errorHandler';
 import { signAccessToken } from '../src/utils/jwt';
@@ -25,6 +30,8 @@ const mockFindUnique = (prisma.barberProfile as jest.Mocked<typeof prisma.barber
 const mockUpsert = (prisma.barberProfile as jest.Mocked<typeof prisma.barberProfile>).upsert as jest.Mock;
 const mockUpdate = (prisma.barberProfile as jest.Mocked<typeof prisma.barberProfile>).update as jest.Mock;
 const mockQueryRaw = prisma.$queryRaw as jest.Mock;
+const mockExecuteRaw = prisma.$executeRaw as jest.Mock;
+const mockPublish = redisService.publishToChannel as jest.Mock;
 
 // ── Test app ──────────────────────────────────────────────────────────────────
 
@@ -49,6 +56,8 @@ afterAll(() => {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockExecuteRaw.mockResolvedValue(BigInt(1));
+  mockPublish.mockResolvedValue(undefined);
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -445,5 +454,258 @@ describe('GET /api/v1/barbers/:id', () => {
     expect(mockFindUnique).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'bp-uuid' } })
     );
+  });
+});
+
+// ── POST /barbers/me/on-call ──────────────────────────────────────────────────
+
+describe('POST /api/v1/barbers/me/on-call', () => {
+  const LEVEL4_PROFILE = { ...BARBER_PROFILE, level: 4, isOnCall: false };
+  const ACTIVATED_PROFILE = { ...BARBER_PROFILE, level: 4, isOnCall: true };
+
+  beforeEach(() => {
+    // First findUnique = level check, second = post-update response
+    mockFindUnique
+      .mockResolvedValueOnce(LEVEL4_PROFILE)
+      .mockResolvedValueOnce(ACTIVATED_PROFILE);
+  });
+
+  it('returns 200 and activates on-call for a Level 4+ barber', async () => {
+    const res = await request(buildApp())
+      .post('/api/v1/barbers/me/on-call')
+      .set('Authorization', `Bearer ${barberToken()}`)
+      .send({ lat: -33.8688, lng: 151.2093 });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.isOnCall).toBe(true);
+  });
+
+  it('calls $executeRaw to update location and on-call status', async () => {
+    await request(buildApp())
+      .post('/api/v1/barbers/me/on-call')
+      .set('Authorization', `Bearer ${barberToken()}`)
+      .send({ lat: -33.8688, lng: 151.2093 });
+
+    expect(mockExecuteRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it('publishes to barber_on_call channel with barberId and coords', async () => {
+    await request(buildApp())
+      .post('/api/v1/barbers/me/on-call')
+      .set('Authorization', `Bearer ${barberToken()}`)
+      .send({ lat: -33.8688, lng: 151.2093 });
+
+    expect(mockPublish).toHaveBeenCalledWith(
+      'barber_on_call',
+      JSON.stringify({ barberId: 'barber-uuid', lat: -33.8688, lng: 151.2093 })
+    );
+  });
+
+  it('returns 403 when barber is Level 1–3', async () => {
+    mockFindUnique.mockReset();
+    mockFindUnique.mockResolvedValueOnce({ ...BARBER_PROFILE, level: 3 });
+
+    const res = await request(buildApp())
+      .post('/api/v1/barbers/me/on-call')
+      .set('Authorization', `Bearer ${barberToken()}`)
+      .send({ lat: -33.8688, lng: 151.2093 });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('FORBIDDEN');
+    expect(mockExecuteRaw).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 when barber is Level 2', async () => {
+    mockFindUnique.mockReset();
+    mockFindUnique.mockResolvedValueOnce({ ...BARBER_PROFILE, level: 2 });
+
+    const res = await request(buildApp())
+      .post('/api/v1/barbers/me/on-call')
+      .set('Authorization', `Bearer ${barberToken()}`)
+      .send({ lat: -33.8688, lng: 151.2093 });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 404 when barber profile does not exist', async () => {
+    mockFindUnique.mockReset();
+    mockFindUnique.mockResolvedValueOnce(null);
+
+    const res = await request(buildApp())
+      .post('/api/v1/barbers/me/on-call')
+      .set('Authorization', `Bearer ${barberToken()}`)
+      .send({ lat: -33.8688, lng: 151.2093 });
+
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('returns 400 when lat is missing', async () => {
+    const res = await request(buildApp())
+      .post('/api/v1/barbers/me/on-call')
+      .set('Authorization', `Bearer ${barberToken()}`)
+      .send({ lng: 151.2093 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('returns 400 when lat is out of range', async () => {
+    const res = await request(buildApp())
+      .post('/api/v1/barbers/me/on-call')
+      .set('Authorization', `Bearer ${barberToken()}`)
+      .send({ lat: 91, lng: 151.2093 });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('never exposes tokens in response', async () => {
+    const res = await request(buildApp())
+      .post('/api/v1/barbers/me/on-call')
+      .set('Authorization', `Bearer ${barberToken()}`)
+      .send({ lat: -33.8688, lng: 151.2093 });
+
+    expect(res.body.data.instagramAccessToken).toBeUndefined();
+    expect(res.body.data.tiktokAccessToken).toBeUndefined();
+  });
+
+  it('returns 401 with no token', async () => {
+    const res = await request(buildApp())
+      .post('/api/v1/barbers/me/on-call')
+      .send({ lat: -33.8688, lng: 151.2093 });
+
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 403 when role is not barber', async () => {
+    const res = await request(buildApp())
+      .post('/api/v1/barbers/me/on-call')
+      .set('Authorization', `Bearer ${consumerToken()}`)
+      .send({ lat: -33.8688, lng: 151.2093 });
+
+    expect(res.status).toBe(403);
+  });
+});
+
+// ── DELETE /barbers/me/on-call ────────────────────────────────────────────────
+
+describe('DELETE /api/v1/barbers/me/on-call', () => {
+  it('returns 200 and deactivates on-call', async () => {
+    const res = await request(buildApp())
+      .delete('/api/v1/barbers/me/on-call')
+      .set('Authorization', `Bearer ${barberToken()}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.message).toBe('On-call deactivated');
+  });
+
+  it('calls $executeRaw to clear location and status', async () => {
+    await request(buildApp())
+      .delete('/api/v1/barbers/me/on-call')
+      .set('Authorization', `Bearer ${barberToken()}`);
+
+    expect(mockExecuteRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it('publishes to barber_off_call channel with barberId', async () => {
+    await request(buildApp())
+      .delete('/api/v1/barbers/me/on-call')
+      .set('Authorization', `Bearer ${barberToken()}`);
+
+    expect(mockPublish).toHaveBeenCalledWith(
+      'barber_off_call',
+      JSON.stringify({ barberId: 'barber-uuid' })
+    );
+  });
+
+  it('returns 401 with no token', async () => {
+    const res = await request(buildApp()).delete('/api/v1/barbers/me/on-call');
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 403 when role is not barber', async () => {
+    const res = await request(buildApp())
+      .delete('/api/v1/barbers/me/on-call')
+      .set('Authorization', `Bearer ${consumerToken()}`);
+
+    expect(res.status).toBe(403);
+  });
+});
+
+// ── GET /barbers/on-call ──────────────────────────────────────────────────────
+
+describe('GET /api/v1/barbers/on-call', () => {
+  beforeEach(() => {
+    mockQueryRaw.mockResolvedValue([{ ...NEARBY_ROW, is_on_call: true }]);
+  });
+
+  it('returns 200 with array of active on-call barbers', async () => {
+    const res = await request(buildApp())
+      .get('/api/v1/barbers/on-call')
+      .query({ lat: '-33.8688', lng: '151.2093' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.data[0].is_on_call).toBe(true);
+    expect(res.body.data[0].distance_km).toBe(2.34);
+  });
+
+  it('runs $executeRaw first to auto-deactivate expired sessions (>8h)', async () => {
+    await request(buildApp())
+      .get('/api/v1/barbers/on-call')
+      .query({ lat: '-33.8688', lng: '151.2093' });
+
+    // executeRaw (expire) must be called before queryRaw (fetch)
+    const executeOrder = mockExecuteRaw.mock.invocationCallOrder[0];
+    const queryOrder = mockQueryRaw.mock.invocationCallOrder[0];
+    expect(executeOrder).toBeLessThan(queryOrder);
+  });
+
+  it('returns empty array when no on-call barbers in range', async () => {
+    mockQueryRaw.mockResolvedValue([]);
+
+    const res = await request(buildApp())
+      .get('/api/v1/barbers/on-call')
+      .query({ lat: '-33.8688', lng: '151.2093' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+  });
+
+  it('is accessible without authentication', async () => {
+    const res = await request(buildApp())
+      .get('/api/v1/barbers/on-call')
+      .query({ lat: '-33.8688', lng: '151.2093' });
+
+    expect(res.status).toBe(200);
+  });
+
+  it('returns 400 when lat is missing', async () => {
+    const res = await request(buildApp())
+      .get('/api/v1/barbers/on-call')
+      .query({ lng: '151.2093' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('returns 400 when radiusKm exceeds 50', async () => {
+    const res = await request(buildApp())
+      .get('/api/v1/barbers/on-call')
+      .query({ lat: '-33.8688', lng: '151.2093', radiusKm: '51' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('works without optional params', async () => {
+    const res = await request(buildApp())
+      .get('/api/v1/barbers/on-call')
+      .query({ lat: '-33.8688', lng: '151.2093' });
+
+    expect(res.status).toBe(200);
+    expect(mockQueryRaw).toHaveBeenCalledTimes(1);
   });
 });

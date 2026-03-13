@@ -85,6 +85,12 @@ export async function deleteOTP(phone: string): Promise<void> {
   await getRedisClient().del(`${OTP_PREFIX}${phone}`);
 }
 
+// ── Pub/sub ───────────────────────────────────────────────────────────────────
+
+export async function publishToChannel(channel: string, message: string): Promise<void> {
+  await getRedisClient().publish(channel, message);
+}
+
 // ── Rate limiting ─────────────────────────────────────────────────────────────
 
 export async function incrementRateLimit(
