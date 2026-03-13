@@ -55,3 +55,20 @@ export async function objectExists(key: string): Promise<boolean> {
 export async function deleteObject(key: string): Promise<void> {
   await getS3().send(new DeleteObjectCommand({ Bucket: getBucket(), Key: key }));
 }
+
+// ── Upload buffer to S3 ──────────────────────────────────────────────────────
+
+export async function uploadBuffer(
+  key: string,
+  buffer: Buffer,
+  contentType = 'application/pdf'
+): Promise<void> {
+  await getS3().send(
+    new PutObjectCommand({
+      Bucket: getBucket(),
+      Key: key,
+      Body: buffer,
+      ContentType: contentType,
+    })
+  );
+}

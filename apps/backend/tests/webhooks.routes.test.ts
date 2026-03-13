@@ -5,6 +5,7 @@ jest.mock('../src/services/prisma.service', () => ({
     barberProfile: { findMany: jest.fn() },
     booking: { findFirst: jest.fn(), update: jest.fn() },
     dispute: { create: jest.fn() },
+    partnership: { findFirst: jest.fn(), update: jest.fn() },
     $transaction: jest.fn(),
   },
 }));
@@ -19,7 +20,21 @@ jest.mock('../src/services/stripe.service', () => ({
 jest.mock('../src/services/queue.service', () => ({
   enqueueNotification: jest.fn().mockResolvedValue(undefined),
 }));
+jest.mock('../src/services/docusign.service', () => ({
+  downloadSignedDocument: jest.fn(),
+}));
+jest.mock('../src/services/storage.service', () => ({
+  uploadBuffer: jest.fn().mockResolvedValue(undefined),
+  generateDownloadUrl: jest.fn((key: string) => `https://cdn.example.com/${key}`),
+}));
+jest.mock('../src/services/notifications.service', () => ({
+  sendPushNotification: jest.fn().mockResolvedValue(undefined),
+}));
+jest.mock('../src/services/docusign-webhook.service', () => ({
+  verifyDocuSignHmac: jest.fn(),
+}));
 
+import crypto from 'crypto';
 import request from 'supertest';
 import express from 'express';
 import webhooksRouter from '../src/routes/webhooks.routes';
@@ -28,6 +43,10 @@ import * as redisService from '../src/services/redis.service';
 import * as stripeService from '../src/services/stripe.service';
 import { prisma } from '../src/services/prisma.service';
 import * as queueService from '../src/services/queue.service';
+import * as docusignService from '../src/services/docusign.service';
+import * as storageService from '../src/services/storage.service';
+import * as notificationsService from '../src/services/notifications.service';
+import * as docusignWebhookService from '../src/services/docusign-webhook.service';
 
 const mockIsStripeEventProcessed = redisService.isStripeEventProcessed as jest.Mock;
 const mockSetStripeEventProcessed = redisService.setStripeEventProcessed as jest.Mock;
@@ -42,6 +61,18 @@ const mockBookingFindFirst = (prisma.booking as jest.Mocked<typeof prisma.bookin
 const mockBookingUpdate = (prisma.booking as jest.Mocked<typeof prisma.booking>).update as jest.Mock;
 const mockPrismaTransaction = (prisma as jest.Mocked<typeof prisma>).$transaction as jest.Mock;
 const mockEnqueueNotification = queueService.enqueueNotification as jest.Mock;
+const mockPartnershipFindFirst = (prisma.partnership as jest.Mocked<typeof prisma.partnership>)
+  .findFirst as jest.Mock;
+const mockPartnershipUpdate = (prisma.partnership as jest.Mocked<typeof prisma.partnership>)
+  .update as jest.Mock;
+const mockDownloadSignedDocument = docusignService.downloadSignedDocument as jest.Mock;
+const mockUploadBuffer = storageService.uploadBuffer as jest.Mock;
+const mockSendPushNotification = notificationsService.sendPushNotification as jest.Mock;
+const mockVerifyDocuSignHmac = docusignWebhookService.verifyDocuSignHmac as jest.Mock;
+
+function computeDocuSignHmac(rawBody: Buffer, key: string): string {
+  return crypto.createHmac('sha256', key).update(rawBody).digest('base64');
+}
 
 function buildApp(): express.Express {
   const app = express();
@@ -59,12 +90,16 @@ function stripeEvent(type: string, object: Record<string, unknown>): Record<stri
   };
 }
 
+const DOCUSIGN_HMAC_KEY = 'docusign-hmac-test-key-32chars!!';
+
 beforeAll(() => {
   process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test';
+  process.env.DOCUSIGN_HMAC_KEY = DOCUSIGN_HMAC_KEY;
 });
 
 afterAll(() => {
   delete process.env.STRIPE_WEBHOOK_SECRET;
+  delete process.env.DOCUSIGN_HMAC_KEY;
 });
 
 beforeEach(() => {
@@ -283,5 +318,174 @@ describe('POST /api/v1/webhooks/stripe', () => {
       .send(Buffer.from(JSON.stringify(payload)));
 
     expect(mockSetStripeEventProcessed).toHaveBeenCalledWith('evt_account_updated_123');
+  });
+});
+
+describe('POST /api/v1/webhooks/docusign', () => {
+  it('400 — missing X-DocuSign-Signature-1 header', async () => {
+    const payload = { envelopeId: 'env-123', status: 'completed' };
+    const rawBody = Buffer.from(JSON.stringify(payload));
+    const res = await request(buildApp())
+      .post('/api/v1/webhooks/docusign')
+      .set('Content-Type', 'application/json')
+      .send(rawBody);
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+  });
+
+  it('400 — HMAC signature verification fails', async () => {
+    const payload = { envelopeId: 'env-123', status: 'completed' };
+    const res = await request(buildApp())
+      .post('/api/v1/webhooks/docusign')
+      .set('X-DocuSign-Signature-1', 'invalid-base64-signature')
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify(payload));
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+  });
+
+  it('200 — envelope-completed: downloads PDF, uploads to S3, updates partnership, sends push', async () => {
+    mockVerifyDocuSignHmac.mockReturnValue(true);
+    const payload = {
+      envelopeId: 'env-completed-123',
+      status: 'completed',
+      event: 'envelope-completed',
+    };
+    const bodyStr = JSON.stringify(payload);
+    const rawBody = Buffer.from(bodyStr, 'utf8');
+    const sig = computeDocuSignHmac(rawBody, DOCUSIGN_HMAC_KEY);
+
+    const partnership = {
+      id: 'partnership-uuid',
+      docusignEnvelopeId: 'env-completed-123',
+      initiatingBarber: { userId: 'init-user-id', user: { id: 'init-user-id' } },
+      partnerBarber: { userId: 'partner-user-id', user: { id: 'partner-user-id' } },
+    };
+    mockPartnershipFindFirst.mockResolvedValue(partnership);
+    mockDownloadSignedDocument.mockResolvedValue(Buffer.from('pdf-content'));
+
+    const res = await request(buildApp())
+      .post('/api/v1/webhooks/docusign')
+      .set('X-DocuSign-Signature-1', sig)
+      .set('Content-Type', 'application/json')
+      .send(bodyStr);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.received).toBe(true);
+    expect(mockPartnershipFindFirst).toHaveBeenCalledWith({
+      where: { docusignEnvelopeId: 'env-completed-123' },
+      include: expect.any(Object),
+    });
+    expect(mockDownloadSignedDocument).toHaveBeenCalledWith('env-completed-123');
+    expect(mockUploadBuffer).toHaveBeenCalled();
+    const uploadCall = mockUploadBuffer.mock.calls[0];
+    expect(uploadCall[0]).toBe('partnerships/partnership-uuid/agreement.pdf');
+    expect(Buffer.isBuffer(uploadCall[1]) || (uploadCall[1]?.type === 'Buffer')).toBe(true);
+    expect(mockPartnershipUpdate).toHaveBeenCalledWith({
+      where: { id: 'partnership-uuid' },
+      data: {
+        documentUrl: 'https://cdn.example.com/partnerships/partnership-uuid/agreement.pdf',
+        status: 'fully_executed',
+      },
+    });
+    expect(mockSendPushNotification).toHaveBeenCalledTimes(2);
+    expect(mockSendPushNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'init-user-id',
+        title: 'Co-Op agreement signed',
+        body: 'Your Co-Op agreement has been signed',
+      })
+    );
+    expect(mockSendPushNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'partner-user-id',
+        title: 'Co-Op agreement signed',
+      })
+    );
+  });
+
+  it('200 — envelope-declined: updates partnership status to draft', async () => {
+    mockVerifyDocuSignHmac.mockReturnValue(true);
+    const payload = { envelopeId: 'env-declined-456', event: 'envelope-declined' };
+    const bodyStr = JSON.stringify(payload);
+    const sig = computeDocuSignHmac(Buffer.from(bodyStr, 'utf8'), DOCUSIGN_HMAC_KEY);
+
+    mockPartnershipFindFirst.mockResolvedValue({
+      id: 'partnership-declined-uuid',
+      docusignEnvelopeId: 'env-declined-456',
+    });
+
+    const res = await request(buildApp())
+      .post('/api/v1/webhooks/docusign')
+      .set('X-DocuSign-Signature-1', sig)
+      .set('Content-Type', 'application/json')
+      .send(bodyStr);
+
+    expect(res.status).toBe(200);
+    expect(mockPartnershipUpdate).toHaveBeenCalledWith({
+      where: { id: 'partnership-declined-uuid' },
+      data: { status: 'draft' },
+    });
+    expect(mockDownloadSignedDocument).not.toHaveBeenCalled();
+  });
+
+  it('200 — envelope-voided: updates partnership status to draft', async () => {
+    mockVerifyDocuSignHmac.mockReturnValue(true);
+    const payload = { envelopeId: 'env-voided-789', status: 'voided' };
+    const bodyStr = JSON.stringify(payload);
+    const sig = computeDocuSignHmac(Buffer.from(bodyStr, 'utf8'), DOCUSIGN_HMAC_KEY);
+
+    mockPartnershipFindFirst.mockResolvedValue({
+      id: 'partnership-voided-uuid',
+      docusignEnvelopeId: 'env-voided-789',
+    });
+
+    const res = await request(buildApp())
+      .post('/api/v1/webhooks/docusign')
+      .set('X-DocuSign-Signature-1', sig)
+      .set('Content-Type', 'application/json')
+      .send(bodyStr);
+
+    expect(res.status).toBe(200);
+    expect(mockPartnershipUpdate).toHaveBeenCalledWith({
+      where: { id: 'partnership-voided-uuid' },
+      data: { status: 'draft' },
+    });
+  });
+
+  it('200 — unknown event or no envelopeId returns 200', async () => {
+    mockVerifyDocuSignHmac.mockReturnValue(true);
+    const payload = { envelopeId: 'env-unknown', event: 'envelope-sent' };
+    const bodyStr = JSON.stringify(payload);
+    const sig = computeDocuSignHmac(Buffer.from(bodyStr, 'utf8'), DOCUSIGN_HMAC_KEY);
+    mockPartnershipFindFirst.mockResolvedValue(null);
+
+    const res = await request(buildApp())
+      .post('/api/v1/webhooks/docusign')
+      .set('X-DocuSign-Signature-1', sig)
+      .set('Content-Type', 'application/json')
+      .send(bodyStr);
+
+    expect(res.status).toBe(200);
+    expect(mockPartnershipUpdate).not.toHaveBeenCalled();
+  });
+
+  it('200 — envelope-completed with no partnership found returns 200', async () => {
+    mockVerifyDocuSignHmac.mockReturnValue(true);
+    const payload = { envelopeId: 'env-orphan', status: 'completed' };
+    const bodyStr = JSON.stringify(payload);
+    const sig = computeDocuSignHmac(Buffer.from(bodyStr, 'utf8'), DOCUSIGN_HMAC_KEY);
+    mockPartnershipFindFirst.mockResolvedValue(null);
+
+    const res = await request(buildApp())
+      .post('/api/v1/webhooks/docusign')
+      .set('X-DocuSign-Signature-1', sig)
+      .set('Content-Type', 'application/json')
+      .send(bodyStr);
+
+    expect(res.status).toBe(200);
+    expect(mockDownloadSignedDocument).not.toHaveBeenCalled();
   });
 });

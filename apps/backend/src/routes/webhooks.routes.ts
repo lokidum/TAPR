@@ -10,6 +10,10 @@ import {
   setStripeEventProcessed,
 } from '../services/redis.service';
 import { enqueueNotification } from '../services/queue.service';
+import { downloadSignedDocument } from '../services/docusign.service';
+import { verifyDocuSignHmac } from '../services/docusign-webhook.service';
+import { uploadBuffer, generateDownloadUrl } from '../services/storage.service';
+import { sendPushNotification } from '../services/notifications.service';
 import { successResponse, errorResponse } from '../types/api';
 import logger from '../utils/logger';
 
@@ -205,6 +209,147 @@ async function handleDisputeCreated(event: Stripe.Event): Promise<void> {
     disputeId: dispute.id,
     reason: dispute.reason,
   });
+}
+
+// ── POST /webhooks/docusign ───────────────────────────────────────────────────
+// Uses express.raw() — raw body required for HMAC verification
+
+router.post(
+  '/docusign',
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const sig = req.headers['x-docusign-signature-1'] as string | undefined;
+    if (!sig) {
+      res.status(400).json(errorResponse('BAD_REQUEST', 'Missing X-DocuSign-Signature-1 header'));
+      return;
+    }
+
+    const rawBody = req.body;
+    if (!Buffer.isBuffer(rawBody)) {
+      res.status(400).json(errorResponse('BAD_REQUEST', 'Invalid webhook body (expected raw buffer)'));
+      return;
+    }
+
+    try {
+      if (!verifyDocuSignHmac(rawBody, sig)) {
+        logger.warn('DocuSign webhook HMAC verification failed');
+        res.status(400).json(errorResponse('BAD_REQUEST', 'HMAC signature verification failed'));
+        return;
+      }
+    } catch (err) {
+      logger.warn('DocuSign webhook HMAC error', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      res.status(400).json(errorResponse('BAD_REQUEST', 'HMAC signature verification failed'));
+      return;
+    }
+
+    try {
+      const payload = JSON.parse(rawBody.toString('utf8')) as {
+        envelopeId?: string;
+        status?: string;
+        event?: string;
+        envelopeSummary?: { envelopeId?: string; status?: string };
+        data?: { envelopeId?: string; status?: string };
+      };
+
+      const envelopeId =
+        payload.envelopeId ?? payload.envelopeSummary?.envelopeId ?? payload.data?.envelopeId;
+      const status =
+        payload.status ?? payload.envelopeSummary?.status ?? payload.data?.status ?? '';
+      const event = payload.event ?? '';
+
+      const eventType = event || status;
+      if (!envelopeId) {
+        logger.info('DocuSign webhook: no envelopeId in payload', { payload: Object.keys(payload) });
+        res.status(200).json(successResponse({ received: true }));
+        return;
+      }
+
+      if (
+        eventType === 'envelope-completed' ||
+        eventType === 'completed' ||
+        status?.toLowerCase() === 'completed'
+      ) {
+        await handleDocuSignEnvelopeCompleted(envelopeId);
+      } else if (
+        eventType === 'envelope-declined' ||
+        eventType === 'declined' ||
+        eventType === 'envelope-voided' ||
+        eventType === 'voided' ||
+        status?.toLowerCase() === 'declined' ||
+        status?.toLowerCase() === 'voided'
+      ) {
+        await handleDocuSignEnvelopeDeclinedOrVoided(envelopeId);
+      }
+
+      res.status(200).json(successResponse({ received: true }));
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+async function handleDocuSignEnvelopeCompleted(envelopeId: string): Promise<void> {
+  const partnership = await prisma.partnership.findFirst({
+    where: { docusignEnvelopeId: envelopeId },
+    include: {
+      initiatingBarber: { include: { user: { select: { id: true } } } },
+      partnerBarber: { include: { user: { select: { id: true } } } },
+    },
+  });
+
+  if (!partnership) {
+    logger.info('DocuSign envelope-completed: no partnership found', { envelopeId });
+    return;
+  }
+
+  const pdfBuffer = await downloadSignedDocument(envelopeId);
+  const key = `partnerships/${partnership.id}/agreement.pdf`;
+  await uploadBuffer(key, pdfBuffer);
+  const documentUrl = generateDownloadUrl(key);
+
+  await prisma.partnership.update({
+    where: { id: partnership.id },
+    data: { documentUrl, status: 'fully_executed' },
+  });
+
+  const title = 'Co-Op agreement signed';
+  const body = 'Your Co-Op agreement has been signed';
+  const type = 'PARTNERSHIP_SIGNED';
+
+  await sendPushNotification({
+    userId: partnership.initiatingBarber.userId,
+    type,
+    title,
+    body,
+    data: { partnershipId: partnership.id },
+  });
+  await sendPushNotification({
+    userId: partnership.partnerBarber.userId,
+    type,
+    title,
+    body,
+    data: { partnershipId: partnership.id },
+  });
+
+  logger.info('Partnership fully executed', {
+    partnershipId: partnership.id,
+    envelopeId,
+  });
+}
+
+async function handleDocuSignEnvelopeDeclinedOrVoided(envelopeId: string): Promise<void> {
+  const partnership = await prisma.partnership.findFirst({
+    where: { docusignEnvelopeId: envelopeId },
+  });
+
+  if (partnership) {
+    await prisma.partnership.update({
+      where: { id: partnership.id },
+      data: { status: 'draft' },
+    });
+    logger.info('Partnership reset to draft', { partnershipId: partnership.id, envelopeId });
+  }
 }
 
 export default router;

@@ -122,6 +122,7 @@ model User {
   notifications      Notification[]
   deviceTokens       DeviceToken[]
   organizedEvents    Event[]         @relation("EventOrganizer")
+  eventAttendances   EventAttendee[]
   disputesRaised     Dispute[]       @relation("DisputeRaisedBy")
   disputesAgainst    Dispute[]       @relation("DisputeAgainst")
   disputesResolved   Dispute[]       @relation("DisputeAdmin")
@@ -342,10 +343,23 @@ model Event {
   status                  EventStatus @default(planning)
   createdAt               DateTime    @default(now()) @map("created_at") @db.Timestamptz
 
-  studio    StudioProfile? @relation("StudioEvents", fields: [studioId], references: [id])
-  organizer User           @relation("EventOrganizer", fields: [organizerUserId], references: [id])
+  studio     StudioProfile?  @relation("StudioEvents", fields: [studioId], references: [id])
+  organizer  User            @relation("EventOrganizer", fields: [organizerUserId], references: [id])
+  attendees  EventAttendee[]
 
   @@map("events")
+}
+
+model EventAttendee {
+  eventId   String   @map("event_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([eventId, userId])
+  @@map("event_attendees")
 }
 
 model Notification {
