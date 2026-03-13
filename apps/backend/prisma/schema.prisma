@@ -153,6 +153,8 @@ model BarberProfile {
   isSustainable         Boolean   @default(false) @map("is_sustainable")
   sustainableVerifiedAt DateTime? @map("sustainable_verified_at") @db.Timestamptz
   stripeAccountId       String?   @map("stripe_account_id")
+  isLevel6Eligible      Boolean   @default(false) @map("is_level6_eligible")
+  levelUpPending        Boolean   @default(false) @map("level_up_pending")
   createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz
 

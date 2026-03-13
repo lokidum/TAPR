@@ -5,6 +5,7 @@
   "main": "dist/app.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/app.ts",
+    "worker": "ts-node --transpile-only src/worker.ts",
     "build": "tsc --project tsconfig.build.json",
     "start": "node dist/app.js",
     "lint": "eslint 'src/**/*.ts' 'tests/**/*.ts'",

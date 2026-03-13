@@ -1,6 +1,6 @@
 import { Queue } from 'bullmq';
 
-function getQueueConnection(): { host: string; port: number } {
+export function getQueueConnection(): { host: string; port: number } {
   const url = process.env.REDIS_URL ?? 'redis://localhost:6379';
   const parsed = new URL(url);
   return {
