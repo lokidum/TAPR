@@ -1,0 +1,65 @@
+service: tapr-backend
+
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  region: ap-southeast-2
+  stage: ${opt:stage, 'staging'}
+  memorySize: 512
+  timeout: 29
+  environment:
+    NODE_ENV: ${self:provider.stage}
+    AWS_REGION_NAME: ${self:provider.region}
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - secretsmanager:GetSecretValue
+          Resource: 'arn:aws:secretsmanager:${self:provider.region}:*:secret:tapr/*'
+        - Effect: Allow
+          Action:
+            - s3:PutObject
+            - s3:GetObject
+            - s3:DeleteObject
+          Resource: 'arn:aws:s3:::tapr-assets-${self:provider.stage}/*'
+        - Effect: Allow
+          Action:
+            - sns:Publish
+          Resource: '*'
+  httpApi:
+    cors:
+      allowedOrigins:
+        - https://admin.tapr.com.au
+      allowedHeaders:
+        - Content-Type
+        - Authorization
+      allowedMethods:
+        - GET
+        - POST
+        - PUT
+        - PATCH
+        - DELETE
+        - OPTIONS
+      allowCredentials: true
+
+functions:
+  api:
+    handler: dist/app.handler
+    events:
+      - httpApi:
+          path: /api/v1/{proxy+}
+          method: ANY
+      - httpApi:
+          path: /api/v1/health
+          method: GET
+
+plugins:
+  - serverless-offline
+
+custom:
+  serverless-offline:
+    httpPort: 3000
+    noPrependStageInUrl: true

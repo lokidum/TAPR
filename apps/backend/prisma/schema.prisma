@@ -1,0 +1,384 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis, pgcrypto]
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  consumer
+  barber
+  studio
+  admin
+}
+
+enum BookingStatus {
+  pending
+  confirmed
+  in_progress
+  completed
+  cancelled
+  disputed
+}
+
+enum ServiceType {
+  in_studio
+  mobile
+  on_call
+}
+
+enum MediaType {
+  image
+  video
+}
+
+enum ChairListingType {
+  daily
+  weekly
+  sick_call
+  permanent
+}
+
+enum ChairListingStatus {
+  available
+  reserved
+  occupied
+}
+
+enum ChairRentalStatus {
+  active
+  completed
+  disputed
+  cancelled
+}
+
+enum PartnershipStructure {
+  unincorporated_jv
+  incorporated_jv
+  partnership
+}
+
+enum PartnershipStatus {
+  draft
+  sent
+  partially_signed
+  fully_executed
+  dissolved
+}
+
+enum EventType {
+  workshop
+  live_activation
+  pop_up
+  guest_spot
+}
+
+enum EventStatus {
+  planning
+  confirmed
+  live
+  completed
+  cancelled
+}
+
+enum DisputeStatus {
+  open
+  under_review
+  resolved_for_claimant
+  resolved_for_respondent
+  escalated
+}
+
+// ---------------------------------------------------------------------------
+// Models
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String?  @unique
+  phone        String?  @unique
+  appleUserId  String?  @unique @map("apple_user_id")
+  googleUserId String?  @unique @map("google_user_id")
+  fullName     String   @map("full_name")
+  avatarUrl    String?  @map("avatar_url")
+  role         UserRole
+  isActive     Boolean  @default(true) @map("is_active")
+  isBanned     Boolean  @default(false) @map("is_banned")
+  banReason    String?  @map("ban_reason")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  barberProfile      BarberProfile?
+  studioProfile      StudioProfile?
+  bookingsAsConsumer Booking[]       @relation("ConsumerBookings")
+  notifications      Notification[]
+  organizedEvents    Event[]         @relation("EventOrganizer")
+  disputesRaised     Dispute[]       @relation("DisputeRaisedBy")
+  disputesAgainst    Dispute[]       @relation("DisputeAgainst")
+  disputesResolved   Dispute[]       @relation("DisputeAdmin")
+
+  @@map("users")
+}
+
+model BarberProfile {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId                String    @unique @map("user_id") @db.Uuid
+  level                 Int       @default(1)
+  title                 String?
+  totalVerifiedCuts     Int       @default(0) @map("total_verified_cuts")
+  averageRating         Decimal   @default(0.00) @map("average_rating") @db.Decimal(3, 2)
+  totalRatings          Int       @default(0) @map("total_ratings")
+  bio                   String?
+  instagramHandle       String?   @map("instagram_handle")
+  tiktokHandle          String?   @map("tiktok_handle")
+  instagramAccessToken  String?   @map("instagram_access_token")
+  tiktokAccessToken     String?   @map("tiktok_access_token")
+  isOnCall              Boolean   @default(false) @map("is_on_call")
+  onCallActivatedAt     DateTime? @map("on_call_activated_at") @db.Timestamptz
+  // on_call_location is a PostGIS geometry column — managed via raw SQL in migrations
+  // Access via prisma.$queryRaw for geo queries
+  serviceRadiusKm       Int       @default(10) @map("service_radius_km")
+  abn                   String?
+  aqfCertLevel          String?   @map("aqf_cert_level")
+  certVerifiedAt        DateTime? @map("cert_verified_at") @db.Timestamptz
+  certDocumentUrl       String?   @map("cert_document_url")
+  isSustainable         Boolean   @default(false) @map("is_sustainable")
+  sustainableVerifiedAt DateTime? @map("sustainable_verified_at") @db.Timestamptz
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookings       Booking[]       @relation("BarberBookings")
+  portfolioItems PortfolioItem[]
+  chairRentals   ChairRental[]
+  partnerships1  Partnership[]   @relation("InitiatingBarber")
+  partnerships2  Partnership[]   @relation("PartnerBarber")
+
+  @@map("barber_profiles")
+}
+
+model StudioProfile {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String   @unique @map("user_id") @db.Uuid
+  businessName    String   @map("business_name")
+  abn             String?
+  addressLine1    String?  @map("address_line1")
+  addressLine2    String?  @map("address_line2")
+  suburb          String?
+  state           String?
+  postcode        String?
+  // coordinates is a PostGIS geometry column — managed via raw SQL in migrations
+  googlePlaceId   String?  @map("google_place_id")
+  phone           String?
+  websiteUrl      String?  @map("website_url")
+  chairCount      Int      @default(1) @map("chair_count")
+  stripeAccountId String?  @map("stripe_account_id")
+  isVerified      Boolean  @default(false) @map("is_verified")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookings      Booking[]      @relation("StudioBookings")
+  chairListings ChairListing[]
+  events        Event[]        @relation("StudioEvents")
+
+  @@map("studio_profiles")
+}
+
+model Booking {
+  id                    String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  consumerId            String        @map("consumer_id") @db.Uuid
+  barberId              String        @map("barber_id") @db.Uuid
+  studioId              String?       @map("studio_id") @db.Uuid
+  serviceType           ServiceType   @map("service_type")
+  status                BookingStatus @default(pending)
+  scheduledAt           DateTime      @map("scheduled_at") @db.Timestamptz
+  durationMinutes       Int           @map("duration_minutes")
+  priceCents            Int           @map("price_cents")
+  platformFeeCents      Int           @map("platform_fee_cents")
+  barberPayoutCents     Int           @map("barber_payout_cents")
+  studioPayoutCents     Int?          @map("studio_payout_cents")
+  stripePaymentIntentId String?       @map("stripe_payment_intent_id")
+  stripeTransferId      String?       @map("stripe_transfer_id")
+  cutRating             Int?          @map("cut_rating")
+  experienceRating      Int?          @map("experience_rating")
+  reviewText            String?       @map("review_text")
+  reviewedAt            DateTime?     @map("reviewed_at") @db.Timestamptz
+  createdAt             DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+
+  consumer       User           @relation("ConsumerBookings", fields: [consumerId], references: [id])
+  barber         BarberProfile  @relation("BarberBookings", fields: [barberId], references: [id])
+  studio         StudioProfile? @relation("StudioBookings", fields: [studioId], references: [id])
+  portfolioItems PortfolioItem[]
+  disputes       Dispute[]
+
+  @@map("bookings")
+}
+
+model PortfolioItem {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  barberId         String    @map("barber_id") @db.Uuid
+  mediaType        MediaType @map("media_type")
+  s3Key            String    @map("s3_key")
+  cdnUrl           String    @map("cdn_url")
+  thumbnailUrl     String?   @map("thumbnail_url")
+  caption          String?
+  tags             String[]
+  isFeatured       Boolean   @default(false) @map("is_featured")
+  instagramMediaId String?   @map("instagram_media_id")
+  tiktokVideoId    String?   @map("tiktok_video_id")
+  viewCount        Int       @default(0) @map("view_count")
+  likeCount        Int       @default(0) @map("like_count")
+  linkedBookingId  String?   @map("linked_booking_id") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  barber        BarberProfile @relation(fields: [barberId], references: [id], onDelete: Cascade)
+  linkedBooking Booking?      @relation(fields: [linkedBookingId], references: [id])
+
+  @@map("portfolio_items")
+}
+
+model ChairListing {
+  id                        String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studioId                  String             @map("studio_id") @db.Uuid
+  title                     String
+  description               String?
+  priceCentsPerDay          Int                @map("price_cents_per_day")
+  priceCentsPerWeek         Int?               @map("price_cents_per_week")
+  availableFrom             DateTime           @map("available_from") @db.Timestamptz
+  availableTo               DateTime           @map("available_to") @db.Timestamptz
+  listingType               ChairListingType   @map("listing_type")
+  minLevelRequired          Int                @default(1) @map("min_level_required")
+  isSickCall                Boolean            @default(false) @map("is_sick_call")
+  sickCallPremiumPct        Int                @default(0) @map("sick_call_premium_pct")
+  status                    ChairListingStatus @default(available)
+  stripeListingFeePaymentId String?            @map("stripe_listing_fee_payment_id")
+  createdAt                 DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt                 DateTime           @updatedAt @map("updated_at") @db.Timestamptz
+
+  studio  StudioProfile @relation(fields: [studioId], references: [id], onDelete: Cascade)
+  rentals ChairRental[]
+
+  @@map("chair_listings")
+}
+
+model ChairRental {
+  id                    String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  listingId             String            @map("listing_id") @db.Uuid
+  barberId              String            @map("barber_id") @db.Uuid
+  startAt               DateTime          @map("start_at") @db.Timestamptz
+  endAt                 DateTime          @map("end_at") @db.Timestamptz
+  totalPriceCents       Int               @map("total_price_cents")
+  status                ChairRentalStatus @default(active)
+  stripePaymentIntentId String?           @map("stripe_payment_intent_id")
+  escrowReleasedAt      DateTime?         @map("escrow_released_at") @db.Timestamptz
+  createdAt             DateTime          @default(now()) @map("created_at") @db.Timestamptz
+
+  listing  ChairListing    @relation(fields: [listingId], references: [id])
+  barber   BarberProfile   @relation(fields: [barberId], references: [id])
+  disputes Dispute[]
+
+  @@map("chair_rentals")
+}
+
+model Partnership {
+  id                      String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  initiatingBarberId      String               @map("initiating_barber_id") @db.Uuid
+  partnerBarberId         String               @map("partner_barber_id") @db.Uuid
+  businessName            String?              @map("business_name")
+  jurisdiction            String               @default("AU")
+  state                   String?
+  structureType           PartnershipStructure @map("structure_type")
+  equitySplitPctInitiator Int                  @map("equity_split_pct_initiator")
+  equitySplitPctPartner   Int                  @map("equity_split_pct_partner")
+  platformEquityPct       Int                  @default(7) @map("platform_equity_pct")
+  vestingMonths           Int                  @default(48) @map("vesting_months")
+  cliffMonths             Int                  @default(12) @map("cliff_months")
+  docusignEnvelopeId      String?              @map("docusign_envelope_id")
+  documentUrl             String?              @map("document_url")
+  status                  PartnershipStatus    @default(draft)
+  dissolvedAt             DateTime?            @map("dissolved_at") @db.Timestamptz
+  dissolutionReason       String?              @map("dissolution_reason")
+  createdAt               DateTime             @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt               DateTime             @updatedAt @map("updated_at") @db.Timestamptz
+
+  initiatingBarber BarberProfile @relation("InitiatingBarber", fields: [initiatingBarberId], references: [id])
+  partnerBarber    BarberProfile @relation("PartnerBarber", fields: [partnerBarberId], references: [id])
+
+  @@map("partnerships")
+}
+
+model Event {
+  id                      String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studioId                String?     @map("studio_id") @db.Uuid
+  organizerUserId         String      @map("organizer_user_id") @db.Uuid
+  title                   String
+  description             String?
+  eventType               EventType   @map("event_type")
+  locationAddress         String?     @map("location_address")
+  // location_coordinates is a PostGIS geometry column — managed via raw SQL in migrations
+  googlePlaceId           String?     @map("google_place_id")
+  startsAt                DateTime    @map("starts_at") @db.Timestamptz
+  endsAt                  DateTime    @map("ends_at") @db.Timestamptz
+  maxAttendees            Int?        @map("max_attendees")
+  ticketPriceCents        Int         @default(0) @map("ticket_price_cents")
+  hasFoodTrucks           Boolean     @default(false) @map("has_food_trucks")
+  permitNumber            String?     @map("permit_number")
+  permitAcquiredAt        DateTime?   @map("permit_acquired_at") @db.Timestamptz
+  insuranceCertificateUrl String?     @map("insurance_certificate_url")
+  status                  EventStatus @default(planning)
+  createdAt               DateTime    @default(now()) @map("created_at") @db.Timestamptz
+
+  studio    StudioProfile? @relation("StudioEvents", fields: [studioId], references: [id])
+  organizer User           @relation("EventOrganizer", fields: [organizerUserId], references: [id])
+
+  @@map("events")
+}
+
+model Notification {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  type      String
+  title     String
+  body      String
+  data      Json?
+  isRead    Boolean  @default(false) @map("is_read")
+  sentVia   String[] @map("sent_via")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model Dispute {
+  id               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingId        String?       @map("booking_id") @db.Uuid
+  rentalId         String?       @map("rental_id") @db.Uuid
+  raisedById       String        @map("raised_by") @db.Uuid
+  againstId        String        @map("against") @db.Uuid
+  reason           String
+  evidenceUrls     String[]      @map("evidence_urls")
+  status           DisputeStatus @default(open)
+  resolutionNotes  String?       @map("resolution_notes")
+  adminId          String?       @map("admin_id") @db.Uuid
+  resolvedAt       DateTime?     @map("resolved_at") @db.Timestamptz
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz
+
+  booking ChairRental? @relation(fields: [rentalId], references: [id])
+  rental  Booking?     @relation(fields: [bookingId], references: [id])
+  raisedBy User        @relation("DisputeRaisedBy", fields: [raisedById], references: [id])
+  against  User        @relation("DisputeAgainst", fields: [againstId], references: [id])
+  admin    User?       @relation("DisputeAdmin", fields: [adminId], references: [id])
+
+  @@map("disputes")
+}
