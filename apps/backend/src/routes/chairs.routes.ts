@@ -224,6 +224,8 @@ interface NearbyChairRow {
   status: string;
   studio_name: string;
   distance_km: number;
+  lat: number;
+  lng: number;
 }
 
 router.get(
@@ -252,6 +254,8 @@ router.get(
           cl.sick_call_premium_pct,
           cl.status,
           sp.business_name AS studio_name,
+          ST_Y(sp.coordinates::geometry)::double precision AS lat,
+          ST_X(sp.coordinates::geometry)::double precision AS lng,
           ROUND(
             (ST_Distance(
               sp.coordinates::geography,
@@ -292,6 +296,8 @@ router.get(
         status: r.status,
         studioName: r.studio_name,
         distanceKm: Number(r.distance_km),
+        lat: Number(r.lat),
+        lng: Number(r.lng),
       }));
 
       res.status(200).json(successResponse({ listings }));

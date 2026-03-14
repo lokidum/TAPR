@@ -273,6 +273,8 @@ describe('GET /api/v1/chairs/nearby', () => {
         status: 'available',
         studio_name: 'Sharp Cuts',
         distance_km: 2.5,
+        lat: -33.87,
+        lng: 151.2,
       },
     ]);
   });

@@ -14,7 +14,7 @@ import 'package:tapr/features/barber/presentation/screens/barber_bookings_screen
 import 'package:tapr/features/barber/presentation/screens/barber_home_screen.dart';
 import 'package:tapr/features/barber/screens/barber_profile_screen.dart';
 import 'package:tapr/features/barber/presentation/screens/barber_public_profile_screen.dart';
-import 'package:tapr/features/barber/screens/chair_map_screen.dart';
+import 'package:tapr/features/marketplace/presentation/screens/chair_map_screen.dart';
 import 'package:tapr/features/barber/presentation/screens/portfolio_screen.dart';
 import 'package:tapr/features/booking/presentation/screens/booking_detail_screen.dart';
 import 'package:tapr/features/booking/screens/booking_history_screen.dart';
