@@ -839,6 +839,71 @@ router.get(
   }
 );
 
+// ── GET /barbers/partnership-eligible ────────────────────────────────────────
+// Must be before /:id to avoid "partnership-eligible" being parsed as id
+
+const partnershipEligibleQuerySchema = z.object({
+  q: z.string().max(100).optional().default(''),
+  limit: z.coerce.number().int().min(1).max(50).optional().default(20),
+});
+
+router.get(
+  '/partnership-eligible',
+  authenticate,
+  requireRole('barber'),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const userId = req.user!.sub;
+      const { q, limit } = partnershipEligibleQuerySchema.parse(req.query);
+
+      const myProfile = await prisma.barberProfile.findUnique({
+        where: { userId },
+        select: { id: true },
+      });
+
+      if (!myProfile) {
+        res.status(404).json(errorResponse('NOT_FOUND', 'Barber profile not found'));
+        return;
+      }
+
+      const userWhere: Prisma.UserWhereInput = {
+        isActive: true,
+        isBanned: false,
+      };
+      if (q.trim()) {
+        userWhere.fullName = { contains: q.trim(), mode: 'insensitive' };
+      }
+
+      const where: Prisma.BarberProfileWhereInput = {
+        id: { not: myProfile.id },
+        level: { gte: 5 },
+        user: userWhere,
+      };
+
+      const barbers = await prisma.barberProfile.findMany({
+        where,
+        take: limit,
+        orderBy: { user: { fullName: 'asc' } },
+        include: {
+          user: { select: { fullName: true, avatarUrl: true } },
+        },
+      });
+
+      const data = barbers.map((bp) => ({
+        id: bp.id,
+        fullName: bp.user.fullName ?? 'Unknown',
+        avatarUrl: bp.user.avatarUrl,
+        level: bp.level,
+        title: bp.title,
+      }));
+
+      res.status(200).json(successResponse(data));
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
 // ── GET /barbers/:id ──────────────────────────────────────────────────────────
 
 router.get(

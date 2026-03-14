@@ -3,6 +3,7 @@ jest.mock('../src/services/prisma.service', () => ({
   prisma: {
     barberProfile: {
       findUnique: jest.fn(),
+      findMany: jest.fn(),
       upsert: jest.fn(),
       update: jest.fn(),
     },
@@ -27,6 +28,7 @@ import { signAccessToken } from '../src/utils/jwt';
 // ── Typed mocks ───────────────────────────────────────────────────────────────
 
 const mockFindUnique = (prisma.barberProfile as jest.Mocked<typeof prisma.barberProfile>).findUnique as jest.Mock;
+const mockFindMany = (prisma.barberProfile as jest.Mocked<typeof prisma.barberProfile>).findMany as jest.Mock;
 const mockUpsert = (prisma.barberProfile as jest.Mocked<typeof prisma.barberProfile>).upsert as jest.Mock;
 const mockUpdate = (prisma.barberProfile as jest.Mocked<typeof prisma.barberProfile>).update as jest.Mock;
 const mockQueryRaw = prisma.$queryRaw as jest.Mock;
@@ -406,6 +408,98 @@ describe('GET /api/v1/barbers/nearby', () => {
 
     // No Authorization header — should still succeed
     expect(res.status).toBe(200);
+  });
+});
+
+// ── GET /barbers/partnership-eligible ────────────────────────────────────────
+
+describe('GET /api/v1/barbers/partnership-eligible', () => {
+  const eligibleBarbers = [
+    {
+      id: 'bp-other-1',
+      level: 5,
+      title: 'Certified',
+      user: { fullName: 'Jane Barber', avatarUrl: null },
+    },
+    {
+      id: 'bp-other-2',
+      level: 6,
+      title: 'Master',
+      user: { fullName: 'John Barber', avatarUrl: null },
+    },
+  ];
+
+  beforeEach(() => {
+    mockFindUnique.mockResolvedValue({ id: 'bp-uuid' });
+    mockFindMany.mockResolvedValue(eligibleBarbers);
+  });
+
+  it('returns 200 with Level 5+ barbers excluding self', async () => {
+    const res = await request(buildApp())
+      .get('/api/v1/barbers/partnership-eligible')
+      .set('Authorization', `Bearer ${barberToken()}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data).toHaveLength(2);
+    expect(res.body.data[0]).toMatchObject({
+      id: 'bp-other-1',
+      fullName: 'Jane Barber',
+      level: 5,
+      title: 'Certified',
+    });
+    expect(mockFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: { not: 'bp-uuid' },
+          level: { gte: 5 },
+        }),
+      })
+    );
+  });
+
+  it('returns 401 when unauthenticated', async () => {
+    const res = await request(buildApp()).get('/api/v1/barbers/partnership-eligible');
+
+    expect(res.status).toBe(401);
+    expect(mockFindMany).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 when not barber role', async () => {
+    const res = await request(buildApp())
+      .get('/api/v1/barbers/partnership-eligible')
+      .set('Authorization', `Bearer ${consumerToken()}`);
+
+    expect(res.status).toBe(403);
+    expect(mockFindMany).not.toHaveBeenCalled();
+  });
+
+  it('filters by q param when provided', async () => {
+    await request(buildApp())
+      .get('/api/v1/barbers/partnership-eligible')
+      .query({ q: 'Jane' })
+      .set('Authorization', `Bearer ${barberToken()}`);
+
+    expect(mockFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          user: expect.objectContaining({
+            fullName: { contains: 'Jane', mode: 'insensitive' },
+          }),
+        }),
+      })
+    );
+  });
+
+  it('returns 404 when barber profile not found', async () => {
+    mockFindUnique.mockResolvedValue(null);
+
+    const res = await request(buildApp())
+      .get('/api/v1/barbers/partnership-eligible')
+      .set('Authorization', `Bearer ${barberToken()}`);
+
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('NOT_FOUND');
   });
 });
 

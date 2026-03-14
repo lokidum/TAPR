@@ -22,7 +22,7 @@ import 'package:tapr/features/booking/presentation/screens/booking_screen.dart';
 import 'package:tapr/features/discover/presentation/screens/discover_screen.dart';
 import 'package:tapr/features/events/screens/event_detail_screen.dart';
 import 'package:tapr/features/events/screens/events_screen.dart';
-import 'package:tapr/features/legal/screens/legal_hub_screen.dart';
+import 'package:tapr/features/legal/presentation/screens/legal_hub_screen.dart';
 import 'package:tapr/features/marketplace/screens/marketplace_screen.dart';
 import 'package:tapr/features/notifications/screens/notifications_screen.dart';
 import 'package:tapr/features/profile/screens/profile_screen.dart';
