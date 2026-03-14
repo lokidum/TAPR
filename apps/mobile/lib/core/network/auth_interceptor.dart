@@ -76,12 +76,13 @@ class AuthInterceptor extends Interceptor {
       final refreshDio = _createRefreshDio();
       final response = await refreshDio.post<Map<String, dynamic>>(
         '/auth/refresh',
-        data: {'refreshToken': refreshToken},
+        options: Options(
+          headers: {'Authorization': 'Bearer $refreshToken'},
+        ),
       );
 
       final newAccessToken = response.data?['data']?['accessToken'] as String?;
-      final newRefreshToken =
-          response.data?['data']?['refreshToken'] as String?;
+      final newRefreshToken = _extractRefreshTokenFromCookie(response);
 
       if (newAccessToken == null) {
         await _handleAuthFailure();
@@ -121,6 +122,18 @@ class AuthInterceptor extends Interceptor {
     final retryDio = Dio(BaseOptions(baseUrl: _dio.options.baseUrl));
     retryDio.httpClientAdapter = _dio.httpClientAdapter;
     return retryDio;
+  }
+
+  String? _extractRefreshTokenFromCookie(Response<dynamic> response) {
+    final cookies = response.headers['set-cookie'];
+    if (cookies == null) return null;
+    for (final cookie in cookies) {
+      if (cookie.startsWith('refresh_token=')) {
+        final token = cookie.split('=')[1].split(';').first;
+        return token.isNotEmpty ? token : null;
+      }
+    }
+    return null;
   }
 
   Future<void> _handleAuthFailure() async {

@@ -100,12 +100,20 @@ void main() {
         requestCount++;
 
         if (options.path.contains('/auth/refresh')) {
-          return jsonResponse({
-            'data': {
-              'accessToken': 'new-token',
-              'refreshToken': 'new-refresh',
+          expect(
+            options.headers['Authorization'],
+            equals('Bearer valid-refresh'),
+          );
+          return ResponseBody.fromString(
+            jsonEncode({
+              'data': {'accessToken': 'new-token'},
+            }),
+            200,
+            headers: {
+              'content-type': ['application/json'],
+              'set-cookie': ['refresh_token=new-refresh; HttpOnly; Path=/'],
             },
-          });
+          );
         }
 
         if (requestCount == 1) {
