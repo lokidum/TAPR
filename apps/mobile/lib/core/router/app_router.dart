@@ -79,7 +79,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/auth/otp',
         name: RouteNames.otp,
-        builder: (context, state) => const OTPScreen(),
+        builder: (context, state) =>
+            OTPScreen(phone: state.extra as String? ?? ''),
       ),
       GoRoute(
         path: '/auth/onboarding',

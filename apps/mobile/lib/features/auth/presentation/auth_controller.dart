@@ -118,6 +118,45 @@ class AuthController extends StateNotifier<AuthScreenState> {
     }
   }
 
+  Future<bool> completeOnboarding({
+    required String role,
+    required String fullName,
+  }) async {
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      await _repository.updateProfile(fullName: fullName);
+
+      if (role == 'barber') {
+        await _repository.ensureBarberProfile();
+      }
+
+      await _tokenStorage.saveRole(role);
+
+      final accessToken = await _tokenStorage.getAccessToken() ?? '';
+      final refreshToken = await _tokenStorage.getRefreshToken() ?? '';
+      final userId = await _tokenStorage.getUserId() ?? '';
+
+      await _authNotifier.setAuthenticated(
+        userId: userId,
+        role: role,
+        accessToken: accessToken,
+        refreshToken: refreshToken,
+      );
+
+      state = state.copyWith(isLoading: false);
+      return true;
+    } on AppException catch (e) {
+      state = state.copyWith(isLoading: false, error: e.displayMessage);
+      return false;
+    } catch (_) {
+      state = state.copyWith(
+        isLoading: false,
+        error: 'Something went wrong. Please try again.',
+      );
+      return false;
+    }
+  }
+
   void clearError() {
     state = state.copyWith(clearError: true);
   }

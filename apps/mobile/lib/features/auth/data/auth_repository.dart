@@ -121,6 +121,17 @@ class AuthRepository {
     return user;
   }
 
+  Future<void> updateProfile({required String fullName}) async {
+    await _dio.patch<Map<String, dynamic>>(
+      '/users/me',
+      data: {'fullName': fullName},
+    );
+  }
+
+  Future<void> ensureBarberProfile() async {
+    await _dio.get<Map<String, dynamic>>('/barbers/me');
+  }
+
   Future<void> _saveRefreshTokenFromCookie(
     Response<Map<String, dynamic>> response,
   ) async {
