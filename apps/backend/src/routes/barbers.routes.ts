@@ -75,6 +75,14 @@ const portfolioPaginationSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional().default(20),
 });
 
+const feedQuerySchema = z.object({
+  lat: z.coerce.number().min(-90).max(90),
+  lng: z.coerce.number().min(-180).max(180),
+  radiusKm: z.coerce.number().min(1).max(50).optional().default(10),
+  page: z.coerce.number().int().min(1).optional().default(1),
+  limit: z.coerce.number().int().min(1).max(50).optional().default(10),
+});
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -99,6 +107,25 @@ interface NearbyBarberRow {
   updated_at: Date;
   full_name: string | null;
   avatar_url: string | null;
+  distance_km: number;
+}
+
+interface FeedRow {
+  id: string;
+  media_type: string;
+  cdn_url: string;
+  thumbnail_url: string | null;
+  caption: string | null;
+  like_count: number;
+  view_count: number;
+  created_at: Date;
+  barber_id: string;
+  barber_user_id: string;
+  barber_full_name: string | null;
+  barber_avatar_url: string | null;
+  barber_level: number;
+  barber_title: string | null;
+  barber_is_on_call: boolean;
   distance_km: number;
 }
 
@@ -367,6 +394,206 @@ router.get(
       `;
 
       res.status(200).json(successResponse(rows));
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ── GET /barbers/nearby/feed ────────────────────────────────────────────────
+
+router.get(
+  '/nearby/feed',
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { lat, lng, radiusKm, page, limit } = feedQuerySchema.parse(req.query);
+      const offset = (page - 1) * limit;
+
+      const rows = await prisma.$queryRaw<FeedRow[]>`
+        SELECT
+          pi.id,
+          pi.media_type,
+          pi.cdn_url,
+          pi.thumbnail_url,
+          pi.caption,
+          pi.like_count,
+          pi.view_count,
+          pi.created_at,
+          bp.id AS barber_id,
+          bp.user_id AS barber_user_id,
+          u.full_name AS barber_full_name,
+          u.avatar_url AS barber_avatar_url,
+          bp.level AS barber_level,
+          bp.title AS barber_title,
+          bp.is_on_call AS barber_is_on_call,
+          ROUND(
+            (ST_Distance(
+              bp.on_call_location::geography,
+              ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography
+            ) / 1000.0)::numeric,
+            2
+          ) AS distance_km
+        FROM portfolio_items pi
+        JOIN barber_profiles bp ON bp.id = pi.barber_id
+        JOIN users u ON u.id = bp.user_id
+        WHERE
+          u.is_active = true
+          AND u.is_banned = false
+          AND bp.on_call_location IS NOT NULL
+          AND ST_DWithin(
+            bp.on_call_location::geography,
+            ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography,
+            ${radiusKm * 1000}
+          )
+        ORDER BY pi.created_at DESC
+        LIMIT ${limit}
+        OFFSET ${offset}
+      `;
+
+      const totalResult = await prisma.$queryRaw<[{ count: bigint }]>`
+        SELECT COUNT(*)::bigint AS count
+        FROM portfolio_items pi
+        JOIN barber_profiles bp ON bp.id = pi.barber_id
+        JOIN users u ON u.id = bp.user_id
+        WHERE
+          u.is_active = true
+          AND u.is_banned = false
+          AND bp.on_call_location IS NOT NULL
+          AND ST_DWithin(
+            bp.on_call_location::geography,
+            ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography,
+            ${radiusKm * 1000}
+          )
+      `;
+
+      const total = Number(totalResult[0].count);
+
+      const items = rows.map(row => ({
+        id: row.id,
+        mediaType: row.media_type,
+        cdnUrl: row.cdn_url,
+        thumbnailUrl: row.thumbnail_url,
+        caption: row.caption,
+        likeCount: Number(row.like_count),
+        viewCount: Number(row.view_count),
+        createdAt: row.created_at,
+        barber: {
+          id: row.barber_id,
+          userId: row.barber_user_id,
+          fullName: row.barber_full_name,
+          avatarUrl: row.barber_avatar_url,
+          level: row.barber_level,
+          title: row.barber_title,
+          isOnCall: row.barber_is_on_call,
+          distanceKm: Number(row.distance_km),
+        },
+      }));
+
+      res.status(200).json(successResponse({ items, total, page, limit }));
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ── POST /barbers/:barberId/portfolio/:itemId/like ──────────────────────────
+
+router.post(
+  '/:barberId/portfolio/:itemId/like',
+  authenticate,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { barberId, itemId } = req.params;
+      const { sub: userId } = req.user!;
+
+      if (!UUID_RE.test(barberId) || !UUID_RE.test(itemId)) {
+        res.status(400).json(errorResponse('INVALID_ID', 'Invalid UUID format'));
+        return;
+      }
+
+      const item = await prisma.portfolioItem.findFirst({
+        where: { id: itemId, barberId },
+      });
+
+      if (!item) {
+        res.status(404).json(errorResponse('NOT_FOUND', 'Portfolio item not found'));
+        return;
+      }
+
+      const existing = await prisma.portfolioLike.findUnique({
+        where: { userId_portfolioItemId: { userId, portfolioItemId: itemId } },
+      });
+
+      if (!existing) {
+        await prisma.$transaction([
+          prisma.portfolioLike.create({
+            data: { userId, portfolioItemId: itemId },
+          }),
+          prisma.portfolioItem.update({
+            where: { id: itemId },
+            data: { likeCount: { increment: 1 } },
+          }),
+        ]);
+      }
+
+      const updated = await prisma.portfolioItem.findUnique({
+        where: { id: itemId },
+        select: { likeCount: true },
+      });
+
+      res.status(200).json(successResponse({ liked: true, likeCount: updated!.likeCount }));
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ── DELETE /barbers/:barberId/portfolio/:itemId/like ─────────────────────────
+
+router.delete(
+  '/:barberId/portfolio/:itemId/like',
+  authenticate,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { barberId, itemId } = req.params;
+      const { sub: userId } = req.user!;
+
+      if (!UUID_RE.test(barberId) || !UUID_RE.test(itemId)) {
+        res.status(400).json(errorResponse('INVALID_ID', 'Invalid UUID format'));
+        return;
+      }
+
+      const item = await prisma.portfolioItem.findFirst({
+        where: { id: itemId, barberId },
+      });
+
+      if (!item) {
+        res.status(404).json(errorResponse('NOT_FOUND', 'Portfolio item not found'));
+        return;
+      }
+
+      const existing = await prisma.portfolioLike.findUnique({
+        where: { userId_portfolioItemId: { userId, portfolioItemId: itemId } },
+      });
+
+      if (existing) {
+        await prisma.$transaction([
+          prisma.portfolioLike.delete({
+            where: { userId_portfolioItemId: { userId, portfolioItemId: itemId } },
+          }),
+          prisma.portfolioItem.update({
+            where: { id: itemId },
+            data: { likeCount: { decrement: 1 } },
+          }),
+        ]);
+      }
+
+      const updated = await prisma.portfolioItem.findUnique({
+        where: { id: itemId },
+        select: { likeCount: true },
+      });
+
+      res.status(200).json(successResponse({ liked: false, likeCount: updated!.likeCount }));
     } catch (err) {
       next(err);
     }

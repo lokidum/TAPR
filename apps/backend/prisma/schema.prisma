@@ -126,6 +126,7 @@ model User {
   disputesRaised     Dispute[]       @relation("DisputeRaisedBy")
   disputesAgainst    Dispute[]       @relation("DisputeAgainst")
   disputesResolved   Dispute[]       @relation("DisputeAdmin")
+  portfolioLikes     PortfolioLike[]
 
   @@map("users")
 }
@@ -246,10 +247,23 @@ model PortfolioItem {
   linkedBookingId  String?   @map("linked_booking_id") @db.Uuid
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
 
-  barber        BarberProfile @relation(fields: [barberId], references: [id], onDelete: Cascade)
-  linkedBooking Booking?      @relation(fields: [linkedBookingId], references: [id])
+  barber        BarberProfile  @relation(fields: [barberId], references: [id], onDelete: Cascade)
+  linkedBooking Booking?       @relation(fields: [linkedBookingId], references: [id])
+  likes         PortfolioLike[]
 
   @@map("portfolio_items")
+}
+
+model PortfolioLike {
+  userId          String   @map("user_id") @db.Uuid
+  portfolioItemId String   @map("portfolio_item_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  portfolioItem PortfolioItem @relation(fields: [portfolioItemId], references: [id], onDelete: Cascade)
+
+  @@id([userId, portfolioItemId])
+  @@map("portfolio_likes")
 }
 
 model ChairListing {
