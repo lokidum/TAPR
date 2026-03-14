@@ -811,4 +811,71 @@ router.get(
   }
 );
 
+// ── GET /barbers/:id/reviews ────────────────────────────────────────────────
+
+router.get(
+  '/:id/reviews',
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { id } = req.params;
+      const { page, limit } = portfolioPaginationSchema.parse(req.query);
+
+      if (!UUID_RE.test(id)) {
+        res.status(400).json(errorResponse('INVALID_ID', 'Invalid UUID format'));
+        return;
+      }
+
+      const profile = await prisma.barberProfile.findUnique({ where: { id } });
+      if (!profile) {
+        res.status(404).json(errorResponse('NOT_FOUND', 'Barber not found'));
+        return;
+      }
+
+      const where = {
+        barberId: id,
+        reviewedAt: { not: null },
+      } as const;
+
+      const [reviews, total] = await Promise.all([
+        prisma.booking.findMany({
+          where,
+          orderBy: { reviewedAt: 'desc' },
+          skip: (page - 1) * limit,
+          take: limit,
+          select: {
+            id: true,
+            cutRating: true,
+            experienceRating: true,
+            reviewText: true,
+            reviewedAt: true,
+            consumer: {
+              select: {
+                fullName: true,
+                avatarUrl: true,
+              },
+            },
+          },
+        }),
+        prisma.booking.count({ where }),
+      ]);
+
+      const mapped = reviews.map((r) => ({
+        id: r.id,
+        cutRating: r.cutRating,
+        experienceRating: r.experienceRating,
+        reviewText: r.reviewText,
+        reviewedAt: r.reviewedAt,
+        consumer: {
+          firstName: r.consumer.fullName?.split(' ')[0] ?? 'Anonymous',
+          avatarUrl: r.consumer.avatarUrl,
+        },
+      }));
+
+      res.status(200).json(successResponse({ reviews: mapped, total, page, limit }));
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
 export default router;
