@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:tapr/core/theme/app_colors.dart';
 import 'package:tapr/features/discover/presentation/discover_controller.dart';
+import 'package:tapr/shared/widgets/notification_bell.dart';
 import 'package:tapr/features/discover/presentation/widgets/feed_view.dart';
 import 'package:tapr/features/discover/presentation/widgets/map_view.dart';
 
@@ -35,6 +36,7 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
         elevation: 0,
         title: _showMap ? const Text('Nearby Barbers') : null,
         actions: [
+          const NotificationBell(),
           IconButton(
             icon: Icon(
               _showMap ? Icons.video_library_rounded : Icons.map_rounded,

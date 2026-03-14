@@ -113,6 +113,28 @@ describe('POST /api/v1/notifications/register-device', () => {
   });
 });
 
+describe('GET /api/v1/notifications/unread-count', () => {
+  it('200 — returns unread count', async () => {
+    mockCount.mockResolvedValue(3);
+
+    const res = await request(buildApp())
+      .get('/api/v1/notifications/unread-count')
+      .set('Authorization', `Bearer ${token('user-1', 'consumer')}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.count).toBe(3);
+    expect(mockCount).toHaveBeenCalledWith({
+      where: { userId: 'user-1', isRead: false },
+    });
+  });
+
+  it('401 — without auth', async () => {
+    const res = await request(buildApp()).get('/api/v1/notifications/unread-count');
+    expect(res.status).toBe(401);
+  });
+});
+
 describe('GET /api/v1/notifications', () => {
   it('200 — returns paginated notifications', async () => {
     const notifications = [

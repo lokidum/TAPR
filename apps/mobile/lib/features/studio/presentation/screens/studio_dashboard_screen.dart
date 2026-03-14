@@ -6,6 +6,7 @@ import 'package:tapr/core/theme/app_colors.dart';
 import 'package:tapr/core/theme/app_text_styles.dart';
 import 'package:tapr/features/studio/data/studio_models.dart';
 import 'package:tapr/features/studio/data/studio_repository.dart';
+import 'package:tapr/shared/widgets/notification_bell.dart';
 import 'package:intl/intl.dart';
 
 class StudioDashboardScreen extends ConsumerStatefulWidget {
@@ -74,6 +75,7 @@ class _StudioDashboardScreenState extends ConsumerState<StudioDashboardScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         title: Text('Studio Dashboard', style: AppTextStyles.h2),
+        actions: const [NotificationBell()],
       ),
       body: _error != null && _profile == null
           ? Center(

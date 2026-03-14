@@ -9,6 +9,7 @@ import 'package:tapr/features/barber/data/barber_dashboard_models.dart';
 import 'package:tapr/features/barber/presentation/barber_dashboard_controller.dart';
 import 'package:tapr/features/barber/presentation/widgets/level_up_celebration.dart';
 import 'package:tapr/shared/widgets/level_badge.dart';
+import 'package:tapr/shared/widgets/notification_bell.dart';
 
 class BarberHomeScreen extends ConsumerStatefulWidget {
   const BarberHomeScreen({super.key});
@@ -41,6 +42,11 @@ class _BarberHomeScreenState extends ConsumerState<BarberHomeScreen> {
       children: [
         Scaffold(
           backgroundColor: AppColors.background,
+          appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            actions: const [NotificationBell()],
+          ),
           body: state.isLoading && state.stats == null
               ? const Center(
                   child: CircularProgressIndicator(color: AppColors.gold),

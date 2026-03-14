@@ -73,6 +73,27 @@ router.get(
   }
 );
 
+// ── GET /notifications/unread-count ───────────────────────────────────────────
+// Must be before /:id/read to avoid "unread-count" being captured as id
+
+router.get(
+  '/unread-count',
+  authenticate,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const userId = req.user!.sub;
+
+      const count = await prisma.notification.count({
+        where: { userId, isRead: false },
+      });
+
+      res.status(200).json(successResponse({ count }));
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
 // ── PATCH /notifications/read-all ──────────────────────────────────────────────
 // Must be before /:id/read to avoid "read-all" being captured as id
 
