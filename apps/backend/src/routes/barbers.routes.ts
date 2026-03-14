@@ -24,6 +24,7 @@ const updateBarberSchema = z.object({
   abn: z.string().regex(/^\d{11}$/, 'ABN must be exactly 11 digits').optional(),
   aqfCertLevel: z.enum(['cert_iii', 'cert_iv', 'diploma']).optional(),
   serviceRadiusKm: z.number().int().min(1).max(50).optional(),
+  levelUpPending: z.literal(false).optional(),
 });
 
 const nearbyQuerySchema = z.object({

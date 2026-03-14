@@ -181,6 +181,76 @@ router.post(
   }
 );
 
+// ── GET /bookings/barber/stats ────────────────────────────────────────────────
+// Must be before /:id to avoid "barber" matching as id
+
+router.get(
+  '/barber/stats',
+  authenticate,
+  requireRole('barber'),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const barberProfileId = await getBarberProfileIdForUser(req.user!.sub);
+      if (!barberProfileId) {
+        res.status(404).json(errorResponse('NOT_FOUND', 'Barber profile not found'));
+        return;
+      }
+
+      const profile = await prisma.barberProfile.findUnique({
+        where: { id: barberProfileId },
+        include: { user: { select: { fullName: true } } },
+      });
+      if (!profile) {
+        res.status(404).json(errorResponse('NOT_FOUND', 'Barber profile not found'));
+        return;
+      }
+
+      const now = new Date();
+      const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+      const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+
+      const todayCount = await prisma.booking.count({
+        where: {
+          barberId: barberProfileId,
+          status: { in: ['pending', 'confirmed'] },
+          scheduledAt: { gte: todayStart, lt: todayEnd },
+        },
+      });
+
+      const dayOfWeek = now.getUTCDay();
+      const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+      const weekStart = new Date(Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate() - mondayOffset,
+      ));
+
+      const earningsResult = await prisma.booking.aggregate({
+        where: {
+          barberId: barberProfileId,
+          status: 'completed',
+          scheduledAt: { gte: weekStart },
+        },
+        _sum: { barberPayoutCents: true },
+      });
+
+      res.json(successResponse({
+        todayCount,
+        weekEarningsCents: earningsResult._sum.barberPayoutCents ?? 0,
+        totalCuts: profile.totalVerifiedCuts,
+        averageRating: Number(profile.averageRating),
+        level: profile.level,
+        title: profile.title,
+        levelUpPending: profile.levelUpPending,
+        isOnCall: profile.isOnCall,
+        userName: profile.user.fullName,
+      }));
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
 // ── GET /bookings/barber/upcoming ──────────────────────────────────────────────
 // Must be before /:id to avoid "barber" matching as id
 
@@ -203,6 +273,9 @@ router.get(
           scheduledAt: { gt: new Date() },
         },
         orderBy: { scheduledAt: 'asc' },
+        include: {
+          consumer: { select: { fullName: true, avatarUrl: true } },
+        },
       });
 
       res.json(successResponse({ bookings }));
