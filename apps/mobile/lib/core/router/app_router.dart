@@ -18,7 +18,7 @@ import 'package:tapr/features/barber/screens/chair_map_screen.dart';
 import 'package:tapr/features/barber/screens/portfolio_screen.dart';
 import 'package:tapr/features/booking/screens/booking_detail_screen.dart';
 import 'package:tapr/features/booking/screens/booking_history_screen.dart';
-import 'package:tapr/features/booking/screens/booking_screen.dart';
+import 'package:tapr/features/booking/presentation/screens/booking_screen.dart';
 import 'package:tapr/features/discover/presentation/screens/discover_screen.dart';
 import 'package:tapr/features/events/screens/event_detail_screen.dart';
 import 'package:tapr/features/events/screens/events_screen.dart';

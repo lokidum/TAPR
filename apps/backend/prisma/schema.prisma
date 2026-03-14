@@ -164,6 +164,7 @@ model BarberProfile {
   user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   bookings       Booking[]       @relation("BarberBookings")
   portfolioItems PortfolioItem[]
+  services       BarberService[]
   chairRentals   ChairRental[]
   partnerships1  Partnership[]   @relation("InitiatingBarber")
   partnerships2  Partnership[]   @relation("PartnerBarber")
@@ -204,6 +205,7 @@ model Booking {
   consumerId            String        @map("consumer_id") @db.Uuid
   barberId              String        @map("barber_id") @db.Uuid
   studioId              String?       @map("studio_id") @db.Uuid
+  serviceId             String?       @map("service_id") @db.Uuid
   serviceType           ServiceType   @map("service_type")
   status                BookingStatus @default(pending)
   scheduledAt           DateTime      @map("scheduled_at") @db.Timestamptz
@@ -228,6 +230,22 @@ model Booking {
   disputes       Dispute[]
 
   @@map("bookings")
+}
+
+model BarberService {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  barberId        String   @map("barber_id") @db.Uuid
+  name            String
+  description     String?
+  durationMinutes Int      @map("duration_minutes")
+  priceCents      Int      @map("price_cents")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  barber BarberProfile @relation(fields: [barberId], references: [id], onDelete: Cascade)
+
+  @@map("barber_services")
 }
 
 model PortfolioItem {

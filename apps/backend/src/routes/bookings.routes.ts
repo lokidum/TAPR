@@ -25,6 +25,7 @@ const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
 const createBookingSchema = z.object({
   barberId: z.string().uuid(),
   studioId: z.string().uuid().optional(),
+  serviceId: z.string().uuid().optional(),
   serviceType: z.enum(['in_studio', 'mobile', 'on_call']),
   scheduledAt: z
     .string()
@@ -36,9 +37,12 @@ const createBookingSchema = z.object({
     z.literal(60),
     z.literal(90),
     z.literal(120),
-  ]),
-  priceCents: z.number().int().min(100),
-});
+  ]).optional(),
+  priceCents: z.number().int().min(100).optional(),
+}).refine(
+  (data) => data.serviceId || (data.priceCents && data.durationMinutes),
+  { message: 'Either serviceId or both priceCents and durationMinutes are required' }
+);
 
 const reviewSchema = z.object({
   cutRating: z.number().int().min(1).max(5),
@@ -76,8 +80,31 @@ router.post(
       }
 
       const body = createBookingSchema.parse(req.body);
-      const { barberId, studioId, serviceType, scheduledAt, durationMinutes, priceCents } = body;
+      const { barberId, studioId, serviceId, serviceType, scheduledAt } = body;
       const consumerId = req.user!.sub;
+
+      let resolvedPriceCents: number | undefined = body.priceCents;
+      let resolvedDurationMinutes: number | undefined = body.durationMinutes;
+
+      if (serviceId) {
+        const service = await prisma.barberService.findFirst({
+          where: { id: serviceId, barberId, isActive: true },
+        });
+        if (!service) {
+          res.status(404).json(errorResponse('NOT_FOUND', 'Service not found or inactive'));
+          return;
+        }
+        resolvedPriceCents = service.priceCents;
+        resolvedDurationMinutes = service.durationMinutes;
+      }
+
+      if (!resolvedPriceCents || !resolvedDurationMinutes) {
+        res.status(400).json(errorResponse('VALIDATION_ERROR', 'Price and duration could not be determined'));
+        return;
+      }
+
+      const priceCents = resolvedPriceCents;
+      const durationMinutes = resolvedDurationMinutes;
 
       // Fetch barber — must exist, be active, and have a Stripe account
       const barber = await prisma.barberProfile.findUnique({
@@ -122,6 +149,7 @@ router.post(
           consumerId,
           barberId,
           studioId: studioId ?? null,
+          serviceId: serviceId ?? null,
           serviceType,
           scheduledAt: new Date(scheduledAt),
           durationMinutes,

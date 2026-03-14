@@ -59,6 +59,9 @@ dependencies:
   sign_in_with_apple: ^6.1.0
   google_sign_in: ^6.2.1
 
+  # Calendar
+  table_calendar: ^3.1.2
+
   # Payments
   flutter_stripe: ^10.1.0
 

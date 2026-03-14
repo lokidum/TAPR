@@ -83,6 +83,25 @@ const feedQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).optional().default(10),
 });
 
+const createServiceSchema = z.object({
+  name: z.string().min(1).max(100),
+  description: z.string().max(500).optional(),
+  durationMinutes: z.number().int().min(15).max(480),
+  priceCents: z.number().int().min(0),
+});
+
+const updateServiceSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  description: z.string().max(500).nullable().optional(),
+  durationMinutes: z.number().int().min(15).max(480).optional(),
+  priceCents: z.number().int().min(0).optional(),
+  isActive: z.boolean().optional(),
+});
+
+const availabilityQuerySchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD'),
+});
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -872,6 +891,203 @@ router.get(
       }));
 
       res.status(200).json(successResponse({ reviews: mapped, total, page, limit }));
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ── Barber Services ──────────────────────────────────────────────────────────
+
+router.get(
+  '/:id/services',
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { id } = req.params;
+      if (!UUID_RE.test(id)) {
+        res.status(400).json(errorResponse('INVALID_ID', 'Invalid barber ID'));
+        return;
+      }
+
+      const barber = await prisma.barberProfile.findUnique({ where: { id } });
+      if (!barber) {
+        res.status(404).json(errorResponse('NOT_FOUND', 'Barber not found'));
+        return;
+      }
+
+      const services = await prisma.barberService.findMany({
+        where: { barberId: id, isActive: true },
+        orderBy: { priceCents: 'asc' },
+      });
+
+      res.status(200).json(successResponse({ services }));
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.post(
+  '/me/services',
+  authenticate,
+  requireRole('barber'),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const body = createServiceSchema.parse(req.body);
+
+      const barber = await prisma.barberProfile.findUnique({
+        where: { userId: req.user!.sub },
+      });
+      if (!barber) {
+        res.status(404).json(errorResponse('NOT_FOUND', 'Barber profile not found'));
+        return;
+      }
+
+      const service = await prisma.barberService.create({
+        data: {
+          barberId: barber.id,
+          name: body.name,
+          description: body.description,
+          durationMinutes: body.durationMinutes,
+          priceCents: body.priceCents,
+        },
+      });
+
+      res.status(201).json(successResponse({ service }));
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.patch(
+  '/me/services/:serviceId',
+  authenticate,
+  requireRole('barber'),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { serviceId } = req.params;
+      if (!UUID_RE.test(serviceId)) {
+        res.status(400).json(errorResponse('INVALID_ID', 'Invalid service ID'));
+        return;
+      }
+
+      const body = updateServiceSchema.parse(req.body);
+
+      const barber = await prisma.barberProfile.findUnique({
+        where: { userId: req.user!.sub },
+      });
+      if (!barber) {
+        res.status(404).json(errorResponse('NOT_FOUND', 'Barber profile not found'));
+        return;
+      }
+
+      const existing = await prisma.barberService.findFirst({
+        where: { id: serviceId, barberId: barber.id },
+      });
+      if (!existing) {
+        res.status(404).json(errorResponse('NOT_FOUND', 'Service not found'));
+        return;
+      }
+
+      const service = await prisma.barberService.update({
+        where: { id: serviceId },
+        data: body,
+      });
+
+      res.status(200).json(successResponse({ service }));
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.delete(
+  '/me/services/:serviceId',
+  authenticate,
+  requireRole('barber'),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { serviceId } = req.params;
+      if (!UUID_RE.test(serviceId)) {
+        res.status(400).json(errorResponse('INVALID_ID', 'Invalid service ID'));
+        return;
+      }
+
+      const barber = await prisma.barberProfile.findUnique({
+        where: { userId: req.user!.sub },
+      });
+      if (!barber) {
+        res.status(404).json(errorResponse('NOT_FOUND', 'Barber profile not found'));
+        return;
+      }
+
+      const existing = await prisma.barberService.findFirst({
+        where: { id: serviceId, barberId: barber.id },
+      });
+      if (!existing) {
+        res.status(404).json(errorResponse('NOT_FOUND', 'Service not found'));
+        return;
+      }
+
+      await prisma.barberService.update({
+        where: { id: serviceId },
+        data: { isActive: false },
+      });
+
+      res.status(200).json(successResponse({ deleted: true }));
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ── Availability ─────────────────────────────────────────────────────────────
+
+router.get(
+  '/:id/availability',
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { id } = req.params;
+      if (!UUID_RE.test(id)) {
+        res.status(400).json(errorResponse('INVALID_ID', 'Invalid barber ID'));
+        return;
+      }
+
+      const { date } = availabilityQuerySchema.parse(req.query);
+
+      const barber = await prisma.barberProfile.findUnique({ where: { id } });
+      if (!barber) {
+        res.status(404).json(errorResponse('NOT_FOUND', 'Barber not found'));
+        return;
+      }
+
+      const startOfDay = new Date(`${date}T00:00:00.000Z`);
+      const endOfDay = new Date(`${date}T23:59:59.999Z`);
+
+      const bookings = await prisma.booking.findMany({
+        where: {
+          barberId: id,
+          status: { in: ['pending', 'confirmed', 'in_progress'] },
+          scheduledAt: { gte: startOfDay, lte: endOfDay },
+        },
+        select: {
+          scheduledAt: true,
+          durationMinutes: true,
+        },
+      });
+
+      const slots = bookings.map((b) => {
+        const start = new Date(b.scheduledAt);
+        const end = new Date(start.getTime() + b.durationMinutes * 60 * 1000);
+        const pad = (n: number) => n.toString().padStart(2, '0');
+        return {
+          startTime: `${pad(start.getUTCHours())}:${pad(start.getUTCMinutes())}`,
+          endTime: `${pad(end.getUTCHours())}:${pad(end.getUTCMinutes())}`,
+        };
+      });
+
+      res.status(200).json(successResponse({ slots }));
     } catch (err) {
       next(err);
     }
