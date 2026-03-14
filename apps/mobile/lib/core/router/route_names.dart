@@ -19,6 +19,7 @@ class RouteNames {
   // Barber
   static const barberHome = 'barber-home';
   static const barberBookings = 'barber-bookings';
+  static const barberBookingDetail = 'barber-booking-detail';
   static const portfolio = 'portfolio';
   static const chairMap = 'chair-map';
   static const legalHub = 'legal-hub';

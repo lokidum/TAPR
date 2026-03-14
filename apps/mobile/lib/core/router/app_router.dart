@@ -10,13 +10,13 @@ import 'package:tapr/features/auth/presentation/screens/onboarding_screen.dart';
 import 'package:tapr/features/auth/presentation/screens/otp_screen.dart';
 import 'package:tapr/features/auth/presentation/screens/phone_input_screen.dart';
 import 'package:tapr/features/auth/presentation/screens/welcome_screen.dart';
-import 'package:tapr/features/barber/screens/barber_bookings_screen.dart';
+import 'package:tapr/features/barber/presentation/screens/barber_bookings_screen.dart';
 import 'package:tapr/features/barber/presentation/screens/barber_home_screen.dart';
 import 'package:tapr/features/barber/screens/barber_profile_screen.dart';
 import 'package:tapr/features/barber/presentation/screens/barber_public_profile_screen.dart';
 import 'package:tapr/features/barber/screens/chair_map_screen.dart';
 import 'package:tapr/features/barber/screens/portfolio_screen.dart';
-import 'package:tapr/features/booking/screens/booking_detail_screen.dart';
+import 'package:tapr/features/booking/presentation/screens/booking_detail_screen.dart';
 import 'package:tapr/features/booking/screens/booking_history_screen.dart';
 import 'package:tapr/features/booking/presentation/screens/booking_screen.dart';
 import 'package:tapr/features/discover/presentation/screens/discover_screen.dart';
@@ -177,6 +177,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 path: '/barber/bookings',
                 name: RouteNames.barberBookings,
                 builder: (context, state) => const BarberBookingsScreen(),
+                routes: [
+                  GoRoute(
+                    path: ':id',
+                    name: RouteNames.barberBookingDetail,
+                    builder: (context, state) => BookingDetailScreen(
+                      bookingId: state.pathParameters['id']!,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
