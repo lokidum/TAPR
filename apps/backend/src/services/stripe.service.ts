@@ -90,6 +90,18 @@ export async function createChairRentalPaymentIntent(
   });
 }
 
+export async function createListingFeePaymentIntent(
+  amountCents: number,
+  metadata: Record<string, string>
+): Promise<Stripe.PaymentIntent> {
+  return getStripe().paymentIntents.create({
+    amount: amountCents,
+    currency: 'aud',
+    capture_method: 'automatic',
+    metadata,
+  });
+}
+
 export async function createAndConfirmPlatformPayment(
   amountCents: number,
   paymentMethodId: string,
@@ -103,6 +115,12 @@ export async function createAndConfirmPlatformPayment(
     confirm: true,
     metadata,
   });
+}
+
+export async function retrievePaymentIntent(
+  paymentIntentId: string
+): Promise<Stripe.PaymentIntent> {
+  return getStripe().paymentIntents.retrieve(paymentIntentId);
 }
 
 export async function capturePaymentIntent(

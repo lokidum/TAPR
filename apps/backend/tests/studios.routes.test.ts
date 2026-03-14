@@ -5,13 +5,21 @@ jest.mock('../src/services/prisma.service', () => ({
       findUnique: jest.fn(),
       upsert: jest.fn(),
       update: jest.fn(),
+      findMany: jest.fn(),
     },
     chairListing: {
+      findMany: jest.fn(),
       count: jest.fn(),
+    },
+    chairRental: {
+      findMany: jest.fn(),
+      count: jest.fn(),
+      aggregate: jest.fn(),
     },
     event: {
       count: jest.fn(),
     },
+    user: { findUnique: jest.fn() },
     $queryRaw: jest.fn(),
     $executeRaw: jest.fn(),
   },
@@ -31,7 +39,11 @@ import { signAccessToken } from '../src/utils/jwt';
 const mockFindUnique = (prisma.studioProfile as jest.Mocked<typeof prisma.studioProfile>).findUnique as jest.Mock;
 const mockUpsert = (prisma.studioProfile as jest.Mocked<typeof prisma.studioProfile>).upsert as jest.Mock;
 const mockUpdate = (prisma.studioProfile as jest.Mocked<typeof prisma.studioProfile>).update as jest.Mock;
+const mockChairFindMany = (prisma.chairListing as jest.Mocked<typeof prisma.chairListing>).findMany as jest.Mock;
 const mockChairCount = (prisma.chairListing as jest.Mocked<typeof prisma.chairListing>).count as jest.Mock;
+const mockChairRentalFindMany = (prisma.chairRental as jest.Mocked<typeof prisma.chairRental>).findMany as jest.Mock;
+const mockChairRentalCount = (prisma.chairRental as jest.Mocked<typeof prisma.chairRental>).count as jest.Mock;
+const mockChairRentalAggregate = (prisma.chairRental as jest.Mocked<typeof prisma.chairRental>).aggregate as jest.Mock;
 const mockEventCount = (prisma.event as jest.Mocked<typeof prisma.event>).count as jest.Mock;
 const mockQueryRaw = prisma.$queryRaw as jest.Mock;
 const mockExecuteRaw = prisma.$executeRaw as jest.Mock;
@@ -125,12 +137,34 @@ const NEARBY_ROW = {
 
 // ── GET /studios/me ───────────────────────────────────────────────────────────
 
+const STUDIO_ME_ROW = {
+  id: 'sp-uuid',
+  user_id: 'studio-uuid',
+  business_name: 'Sharp Cuts Studio',
+  abn: '12345678901',
+  address_line1: '42 Barber St',
+  address_line2: null,
+  suburb: 'Surry Hills',
+  state: 'NSW',
+  postcode: '2010',
+  google_place_id: null,
+  phone: '+61299999999',
+  website_url: 'https://sharpcutsstudio.com',
+  chair_count: 4,
+  is_verified: false,
+  created_at: new Date('2025-01-01T00:00:00Z'),
+  updated_at: new Date('2025-01-01T00:00:00Z'),
+  lat: -33.87,
+  lng: 151.2,
+};
+
 describe('GET /api/v1/studios/me', () => {
   beforeEach(() => {
     mockUpsert.mockResolvedValue(STUDIO_PROFILE);
+    mockQueryRaw.mockResolvedValue([STUDIO_ME_ROW]);
   });
 
-  it('returns 200 with the studio profile', async () => {
+  it('returns 200 with the studio profile including lat/lng', async () => {
     const res = await request(buildApp())
       .get('/api/v1/studios/me')
       .set('Authorization', `Bearer ${studioToken()}`);
@@ -139,6 +173,8 @@ describe('GET /api/v1/studios/me', () => {
     expect(res.body.success).toBe(true);
     expect(res.body.data.id).toBe('sp-uuid');
     expect(res.body.data.businessName).toBe('Sharp Cuts Studio');
+    expect(res.body.data.lat).toBe(-33.87);
+    expect(res.body.data.lng).toBe(151.2);
   });
 
   it('never exposes stripeAccountId', async () => {
@@ -182,12 +218,14 @@ describe('GET /api/v1/studios/me', () => {
 describe('PATCH /api/v1/studios/me', () => {
   beforeEach(() => {
     mockUpdate.mockResolvedValue(STUDIO_PROFILE);
-    mockFindUnique.mockResolvedValue(STUDIO_PROFILE);
+    mockQueryRaw.mockResolvedValue([STUDIO_ME_ROW]);
   });
 
   it('returns 200 with updated businessName', async () => {
     mockUpdate.mockResolvedValue({ ...STUDIO_PROFILE, businessName: 'New Name' });
-    mockFindUnique.mockResolvedValue({ ...STUDIO_PROFILE, businessName: 'New Name' });
+    mockQueryRaw.mockResolvedValue([
+      { ...STUDIO_ME_ROW, business_name: 'New Name' },
+    ]);
 
     const res = await request(buildApp())
       .patch('/api/v1/studios/me')
@@ -199,7 +237,9 @@ describe('PATCH /api/v1/studios/me', () => {
   });
 
   it('returns 200 with updated chairCount', async () => {
-    mockFindUnique.mockResolvedValue({ ...STUDIO_PROFILE, chairCount: 6 });
+    mockQueryRaw.mockResolvedValue([
+      { ...STUDIO_ME_ROW, chair_count: 6 },
+    ]);
 
     const res = await request(buildApp())
       .patch('/api/v1/studios/me')
@@ -330,6 +370,116 @@ describe('PATCH /api/v1/studios/me', () => {
       .send({ businessName: 'Test' });
 
     expect(res.status).toBe(403);
+  });
+});
+
+// ── GET /studios/me/chairs ────────────────────────────────────────────────────
+
+describe('GET /api/v1/studios/me/chairs', () => {
+  beforeEach(() => {
+    mockFindUnique.mockResolvedValue({ id: 'sp-uuid' });
+    mockChairFindMany.mockResolvedValue([
+      {
+        id: 'chair-1',
+        title: 'Chair A',
+        status: 'available',
+        priceCentsPerDay: 5000,
+        priceCentsPerWeek: 25000,
+        listingType: 'daily',
+        minLevelRequired: 1,
+        _count: { rentals: 3 },
+      },
+    ]);
+    mockChairCount.mockResolvedValue(1);
+  });
+
+  it('returns 200 with paginated chair listings', async () => {
+    const res = await request(buildApp())
+      .get('/api/v1/studios/me/chairs')
+      .set('Authorization', `Bearer ${studioToken()}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.listings).toHaveLength(1);
+    expect(res.body.data.listings[0].title).toBe('Chair A');
+    expect(res.body.data.listings[0].rentalCount).toBe(3);
+    expect(res.body.data.total).toBe(1);
+  });
+
+  it('returns 401 without auth', async () => {
+    const res = await request(buildApp()).get('/api/v1/studios/me/chairs');
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 404 when studio not found', async () => {
+    mockFindUnique.mockResolvedValue(null);
+
+    const res = await request(buildApp())
+      .get('/api/v1/studios/me/chairs')
+      .set('Authorization', `Bearer ${studioToken()}`);
+
+    expect(res.status).toBe(404);
+  });
+});
+
+// ── GET /studios/me/stats ─────────────────────────────────────────────────────
+
+describe('GET /api/v1/studios/me/stats', () => {
+  beforeEach(() => {
+    mockFindUnique.mockResolvedValue({ id: 'sp-uuid' });
+    mockChairCount.mockResolvedValue(5);
+    mockChairRentalCount.mockResolvedValue(12);
+    mockChairRentalAggregate.mockResolvedValue({ _sum: { totalPriceCents: 45000 } });
+  });
+
+  it('returns 200 with stats', async () => {
+    const res = await request(buildApp())
+      .get('/api/v1/studios/me/stats')
+      .set('Authorization', `Bearer ${studioToken()}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.totalChairs).toBe(5);
+    expect(res.body.data.rentalsThisMonth).toBe(12);
+    expect(res.body.data.revenueThisMonth).toBe(45000);
+    expect(res.body.data.occupancyRate).toBeDefined();
+  });
+
+  it('returns 401 without auth', async () => {
+    const res = await request(buildApp()).get('/api/v1/studios/me/stats');
+    expect(res.status).toBe(401);
+  });
+});
+
+// ── GET /studios/me/rentals/recent ────────────────────────────────────────────
+
+describe('GET /api/v1/studios/me/rentals/recent', () => {
+  beforeEach(() => {
+    mockFindUnique.mockResolvedValue({ id: 'sp-uuid' });
+    mockChairRentalFindMany.mockResolvedValue([
+      {
+        id: 'rental-1',
+        startAt: new Date('2025-03-01'),
+        endAt: new Date('2025-03-05'),
+        status: 'completed',
+        barber: { user: { fullName: 'John Barber', avatarUrl: null } },
+        listing: { title: 'Chair A' },
+      },
+    ]);
+  });
+
+  it('returns 200 with recent rentals', async () => {
+    const res = await request(buildApp())
+      .get('/api/v1/studios/me/rentals/recent')
+      .set('Authorization', `Bearer ${studioToken()}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.rentals).toHaveLength(1);
+    expect(res.body.data.rentals[0].barberName).toBe('John Barber');
+    expect(res.body.data.rentals[0].listingTitle).toBe('Chair A');
+  });
+
+  it('returns 401 without auth', async () => {
+    const res = await request(buildApp()).get('/api/v1/studios/me/rentals/recent');
+    expect(res.status).toBe(401);
   });
 });
 

@@ -5,6 +5,8 @@ import { prisma } from '../services/prisma.service';
 import {
   createAndConfirmPlatformPayment,
   createChairRentalPaymentIntent,
+  createListingFeePaymentIntent,
+  retrievePaymentIntent,
   capturePaymentIntent,
 } from '../services/stripe.service';
 import {
@@ -23,22 +25,29 @@ const ESCROW_RELEASE_DELAY_MS = 48 * 60 * 60 * 1000;
 
 // ── Zod schemas ───────────────────────────────────────────────────────────────
 
-const createChairSchema = z.object({
-  title: z.string().min(1).max(200),
-  description: z.string().max(2000).optional(),
-  priceCentsPerDay: z.number().int().min(1000),
-  priceCentsPerWeek: z.number().int().min(1000).optional(),
-  availableFrom: z.string().datetime({ message: 'availableFrom must be ISO 8601' }),
-  availableTo: z.string().datetime({ message: 'availableTo must be ISO 8601' }),
-  listingType: z.enum(['daily', 'weekly', 'sick_call', 'permanent']),
-  minLevelRequired: z.number().int().min(1).max(6).optional().default(1),
-  isSickCall: z.boolean().optional().default(false),
-  sickCallPremiumPct: z.number().int().min(0).max(100).optional().default(0),
-  paymentMethodId: z.string().min(1, 'paymentMethodId required for listing fee'),
-}).refine(
-  data => new Date(data.availableTo) > new Date(data.availableFrom),
-  { message: 'availableTo must be after availableFrom', path: ['availableTo'] }
-);
+const createChairSchema = z
+  .object({
+    title: z.string().min(1).max(200),
+    description: z.string().max(2000).optional(),
+    priceCentsPerDay: z.number().int().min(1000),
+    priceCentsPerWeek: z.number().int().min(1000).optional(),
+    availableFrom: z.string().datetime({ message: 'availableFrom must be ISO 8601' }),
+    availableTo: z.string().datetime({ message: 'availableTo must be ISO 8601' }),
+    listingType: z.enum(['daily', 'weekly', 'sick_call', 'permanent']),
+    minLevelRequired: z.number().int().min(1).max(6).optional().default(1),
+    isSickCall: z.boolean().optional().default(false),
+    sickCallPremiumPct: z.number().int().min(0).max(100).optional().default(0),
+    paymentMethodId: z.string().min(1).optional(),
+    paymentIntentId: z.string().min(1).optional(),
+  })
+  .refine(
+    data => new Date(data.availableTo) > new Date(data.availableFrom),
+    { message: 'availableTo must be after availableFrom', path: ['availableTo'] }
+  )
+  .refine(
+    data => !!(data.paymentMethodId || data.paymentIntentId),
+    { message: 'Either paymentMethodId or paymentIntentId is required', path: ['paymentMethodId'] }
+  );
 
 const nearbyQuerySchema = z.object({
   lat: z.coerce.number().min(-90).max(90),
@@ -125,6 +134,35 @@ function calculateRentalPriceCents(
   return days * listing.priceCentsPerDay;
 }
 
+// ── POST /chairs/listing-fee-intent ─────────────────────────────────────────────
+// Must be before POST /
+
+router.post(
+  '/listing-fee-intent',
+  authenticate,
+  requireRole('studio'),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const studioId = await getStudioIdForUser(req.user!.sub);
+      if (!studioId) {
+        res.status(404).json(errorResponse('NOT_FOUND', 'Studio profile not found'));
+        return;
+      }
+
+      const pi = await createListingFeePaymentIntent(LISTING_FEE_CENTS, {
+        studioId,
+        type: 'chair_listing_fee',
+      });
+
+      res.status(200).json(
+        successResponse({ clientSecret: pi.client_secret, paymentIntentId: pi.id })
+      );
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
 // ── POST /chairs ───────────────────────────────────────────────────────────────
 
 router.post(
@@ -152,29 +190,52 @@ router.post(
         isSickCall,
         sickCallPremiumPct,
         paymentMethodId,
+        paymentIntentId: bodyPaymentIntentId,
       } = body;
 
       let paymentIntentId: string;
-      try {
-        const pi = await createAndConfirmPlatformPayment(
-          LISTING_FEE_CENTS,
-          paymentMethodId,
-          { studioId, type: 'chair_listing_fee' }
-        );
+      if (bodyPaymentIntentId) {
+        const pi = await retrievePaymentIntent(bodyPaymentIntentId);
         if (pi.status !== 'succeeded') {
           res.status(402).json(
-            errorResponse('PAYMENT_FAILED', 'Listing fee payment could not be completed')
+            errorResponse('PAYMENT_FAILED', 'Listing fee payment was not completed')
+          );
+          return;
+        }
+        if (pi.metadata?.studioId !== studioId || pi.metadata?.type !== 'chair_listing_fee') {
+          res.status(402).json(
+            errorResponse('PAYMENT_FAILED', 'Invalid payment intent for this studio')
           );
           return;
         }
         paymentIntentId = pi.id;
-      } catch (err) {
-        logger.warn('Chair listing fee payment failed', {
-          studioId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        res.status(402).json(
-          errorResponse('PAYMENT_FAILED', 'Listing fee payment failed')
+      } else if (paymentMethodId) {
+        try {
+          const pi = await createAndConfirmPlatformPayment(
+            LISTING_FEE_CENTS,
+            paymentMethodId,
+            { studioId, type: 'chair_listing_fee' }
+          );
+          if (pi.status !== 'succeeded') {
+            res.status(402).json(
+              errorResponse('PAYMENT_FAILED', 'Listing fee payment could not be completed')
+            );
+            return;
+          }
+          paymentIntentId = pi.id;
+        } catch (err) {
+          logger.warn('Chair listing fee payment failed', {
+            studioId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          res.status(402).json(
+            errorResponse('PAYMENT_FAILED', 'Listing fee payment failed')
+          );
+          return;
+        }
+      } else {
+        res.status(400).json(
+          errorResponse('BAD_REQUEST', 'Either paymentMethodId or paymentIntentId is required')
         );
         return;
       }

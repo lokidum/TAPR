@@ -24,6 +24,8 @@ jest.mock('../src/services/prisma.service', () => ({
 jest.mock('../src/services/stripe.service', () => ({
   createAndConfirmPlatformPayment: jest.fn(),
   createChairRentalPaymentIntent: jest.fn(),
+  createListingFeePaymentIntent: jest.fn(),
+  retrievePaymentIntent: jest.fn(),
   capturePaymentIntent: jest.fn(),
 }));
 jest.mock('../src/services/queue.service', () => ({
@@ -80,6 +82,9 @@ const mockQueryRaw = prisma.$queryRaw as jest.Mock;
 const mockPrismaTransaction = (prisma as jest.Mocked<typeof prisma>).$transaction as jest.Mock;
 const mockCreateAndConfirmPlatformPayment =
   stripeService.createAndConfirmPlatformPayment as jest.Mock;
+const mockCreateListingFeePaymentIntent =
+  stripeService.createListingFeePaymentIntent as jest.Mock;
+const mockRetrievePaymentIntent = stripeService.retrievePaymentIntent as jest.Mock;
 const mockCreateChairRentalPaymentIntent =
   stripeService.createChairRentalPaymentIntent as jest.Mock;
 const mockCapturePaymentIntent = stripeService.capturePaymentIntent as jest.Mock;
@@ -242,7 +247,7 @@ describe('POST /api/v1/chairs', () => {
     expect(res.status).toBe(400);
   });
 
-  it('400 — missing paymentMethodId', async () => {
+  it('400 — missing both paymentMethodId and paymentIntentId', async () => {
     const { paymentMethodId: _pm, ...body } = VALID_CREATE_BODY;
 
     const res = await request(buildApp())
@@ -251,6 +256,80 @@ describe('POST /api/v1/chairs', () => {
       .send(body);
 
     expect(res.status).toBe(400);
+  });
+
+  it('201 — creates listing with paymentIntentId when PaymentIntent succeeded', async () => {
+    mockRetrievePaymentIntent.mockResolvedValue({
+      id: 'pi_fee123',
+      status: 'succeeded',
+      metadata: { studioId: STUDIO_ID, type: 'chair_listing_fee' },
+    });
+    mockChairCreate.mockResolvedValue(CREATED_LISTING);
+
+    const { paymentMethodId: _pm, ...body } = VALID_CREATE_BODY;
+    const res = await request(buildApp())
+      .post('/api/v1/chairs')
+      .set('Authorization', `Bearer ${studioToken()}`)
+      .send({ ...body, paymentIntentId: 'pi_fee123' });
+
+    expect(res.status).toBe(201);
+    expect(mockRetrievePaymentIntent).toHaveBeenCalledWith('pi_fee123');
+    expect(mockCreateAndConfirmPlatformPayment).not.toHaveBeenCalled();
+  });
+
+  it('402 — paymentIntentId not succeeded', async () => {
+    mockRetrievePaymentIntent.mockResolvedValue({
+      id: 'pi_fee123',
+      status: 'requires_payment_method',
+      metadata: { studioId: STUDIO_ID, type: 'chair_listing_fee' },
+    });
+
+    const { paymentMethodId: _pm, ...body } = VALID_CREATE_BODY;
+    const res = await request(buildApp())
+      .post('/api/v1/chairs')
+      .set('Authorization', `Bearer ${studioToken()}`)
+      .send({ ...body, paymentIntentId: 'pi_fee123' });
+
+    expect(res.status).toBe(402);
+    expect(mockChairCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/v1/chairs/listing-fee-intent', () => {
+  beforeEach(() => {
+    mockCreateListingFeePaymentIntent.mockResolvedValue({
+      id: 'pi_intent123',
+      client_secret: 'pi_intent123_secret_xyz',
+    });
+  });
+
+  it('200 — returns clientSecret and paymentIntentId', async () => {
+    const res = await request(buildApp())
+      .post('/api/v1/chairs/listing-fee-intent')
+      .set('Authorization', `Bearer ${studioToken()}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.clientSecret).toBe('pi_intent123_secret_xyz');
+    expect(res.body.data.paymentIntentId).toBe('pi_intent123');
+    expect(mockCreateListingFeePaymentIntent).toHaveBeenCalledWith(
+      500,
+      expect.objectContaining({ studioId: STUDIO_ID, type: 'chair_listing_fee' })
+    );
+  });
+
+  it('401 — no auth', async () => {
+    const res = await request(buildApp()).post('/api/v1/chairs/listing-fee-intent');
+    expect(res.status).toBe(401);
+  });
+
+  it('404 — studio profile not found', async () => {
+    mockStudioFindUnique.mockResolvedValue(null);
+
+    const res = await request(buildApp())
+      .post('/api/v1/chairs/listing-fee-intent')
+      .set('Authorization', `Bearer ${studioToken()}`);
+
+    expect(res.status).toBe(404);
   });
 });
 

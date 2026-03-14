@@ -26,12 +26,12 @@ import 'package:tapr/features/legal/screens/legal_hub_screen.dart';
 import 'package:tapr/features/marketplace/screens/marketplace_screen.dart';
 import 'package:tapr/features/notifications/screens/notifications_screen.dart';
 import 'package:tapr/features/profile/screens/profile_screen.dart';
-import 'package:tapr/features/studio/screens/chair_manager_screen.dart';
-import 'package:tapr/features/studio/screens/studio_dashboard_screen.dart';
+import 'package:tapr/features/studio/presentation/screens/chair_manager_screen.dart';
+import 'package:tapr/features/studio/presentation/screens/studio_dashboard_screen.dart';
+import 'package:tapr/features/studio/presentation/screens/talent_scout_screen.dart';
 import 'package:tapr/features/studio/screens/studio_events_screen.dart';
 import 'package:tapr/features/studio/screens/studio_profile_screen.dart';
 import 'package:tapr/features/studio/screens/studio_public_profile_screen.dart';
-import 'package:tapr/features/studio/screens/talent_scout_screen.dart';
 import 'package:tapr/shared/widgets/error_view.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {

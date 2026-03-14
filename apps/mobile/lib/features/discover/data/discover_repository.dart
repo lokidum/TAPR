@@ -38,6 +38,8 @@ class DiscoverRepository {
     required double lat,
     required double lng,
     double radiusKm = 10,
+    int? minLevel,
+    int? maxLevel,
   }) async {
     final response = await _dio.get<Map<String, dynamic>>(
       '/barbers/nearby',
@@ -45,6 +47,8 @@ class DiscoverRepository {
         'lat': lat,
         'lng': lng,
         'radiusKm': radiusKm,
+        if (minLevel != null) 'minLevel': minLevel,
+        if (maxLevel != null) 'maxLevel': maxLevel,
       },
     );
 

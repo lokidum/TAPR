@@ -97,6 +97,7 @@ class NearbyBarber {
     required this.distanceKm,
     required this.averageRating,
     required this.totalRatings,
+    this.totalVerifiedCuts = 0,
     this.lat,
     this.lng,
   });
@@ -111,6 +112,7 @@ class NearbyBarber {
   final double distanceKm;
   final double averageRating;
   final int totalRatings;
+  final int totalVerifiedCuts;
   final double? lat;
   final double? lng;
 
@@ -137,6 +139,9 @@ class NearbyBarber {
           0.0,
       totalRatings: (json['total_ratings'] as num?)?.toInt() ??
           (json['totalRatings'] as num?)?.toInt() ??
+          0,
+      totalVerifiedCuts: (json['total_verified_cuts'] as num?)?.toInt() ??
+          (json['totalVerifiedCuts'] as num?)?.toInt() ??
           0,
       lat: (json['lat'] as num?)?.toDouble(),
       lng: (json['lng'] as num?)?.toDouble(),
