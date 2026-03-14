@@ -8,6 +8,12 @@ class BarberProfileRepository {
 
   final Dio _dio;
 
+  Future<BarberProfileDetail> fetchMyProfile() async {
+    final response = await _dio.get<Map<String, dynamic>>('/barbers/me');
+    final data = response.data!['data'] as Map<String, dynamic>;
+    return BarberProfileDetail.fromJson(data);
+  }
+
   Future<BarberProfileDetail> fetchProfile(String barberId) async {
     final response = await _dio.get<Map<String, dynamic>>(
       '/barbers/$barberId',

@@ -288,6 +288,49 @@ router.post(
   }
 );
 
+// ── GET /barbers/me/portfolio/stats ────────────────────────────────────────────
+
+router.get(
+  '/me/portfolio/stats',
+  authenticate,
+  requireRole('barber'),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { sub: userId } = req.user!;
+
+      const barberProfile = await prisma.barberProfile.findUnique({ where: { userId } });
+      if (!barberProfile) {
+        res.status(404).json(errorResponse('NOT_FOUND', 'Barber profile not found'));
+        return;
+      }
+
+      const rows = await prisma.$queryRaw<
+        [{ total_items: bigint; total_views: bigint; total_likes: bigint }]
+      >(
+        Prisma.sql`
+          SELECT
+            COUNT(*)::bigint AS total_items,
+            COALESCE(SUM(view_count), 0)::bigint AS total_views,
+            COALESCE(SUM(like_count), 0)::bigint AS total_likes
+          FROM portfolio_items
+          WHERE barber_id = ${barberProfile.id}
+        `
+      );
+
+      const row = rows[0];
+      res.status(200).json(
+        successResponse({
+          totalItems: Number(row?.total_items ?? 0),
+          totalViews: Number(row?.total_views ?? 0),
+          totalLikes: Number(row?.total_likes ?? 0),
+        })
+      );
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
 // ── PATCH /barbers/me/portfolio/:itemId ───────────────────────────────────────
 
 router.patch(

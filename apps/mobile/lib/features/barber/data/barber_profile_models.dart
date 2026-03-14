@@ -74,6 +74,8 @@ class PortfolioItemModel {
     required this.likeCount,
     required this.viewCount,
     required this.createdAt,
+    this.isFeatured = false,
+    this.barberId,
   });
 
   final String id;
@@ -84,6 +86,8 @@ class PortfolioItemModel {
   final int likeCount;
   final int viewCount;
   final String createdAt;
+  final bool isFeatured;
+  final String? barberId;
 
   factory PortfolioItemModel.fromJson(Map<String, dynamic> json) {
     return PortfolioItemModel(
@@ -95,6 +99,26 @@ class PortfolioItemModel {
       likeCount: (json['likeCount'] as num?)?.toInt() ?? 0,
       viewCount: (json['viewCount'] as num?)?.toInt() ?? 0,
       createdAt: json['createdAt'].toString(),
+      isFeatured: json['isFeatured'] as bool? ?? false,
+      barberId: json['barberId'] as String?,
+    );
+  }
+
+  PortfolioItemModel copyWith({
+    String? caption,
+    bool? isFeatured,
+  }) {
+    return PortfolioItemModel(
+      id: id,
+      mediaType: mediaType,
+      cdnUrl: cdnUrl,
+      thumbnailUrl: thumbnailUrl,
+      caption: caption ?? this.caption,
+      likeCount: likeCount,
+      viewCount: viewCount,
+      createdAt: createdAt,
+      isFeatured: isFeatured ?? this.isFeatured,
+      barberId: barberId,
     );
   }
 }

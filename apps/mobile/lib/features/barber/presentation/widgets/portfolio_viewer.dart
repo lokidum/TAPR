@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chewie/chewie.dart';
 import 'package:flutter/material.dart';
+import 'package:tapr/features/barber/presentation/widgets/portfolio_gallery_viewer.dart';
 import 'package:tapr/core/theme/app_colors.dart';
 import 'package:tapr/core/theme/app_text_styles.dart';
 import 'package:tapr/features/barber/data/barber_profile_models.dart';
@@ -10,6 +11,20 @@ class PortfolioViewer extends StatefulWidget {
   const PortfolioViewer({super.key, required this.item});
 
   final PortfolioItemModel item;
+
+  static Future<void> showGallery(
+    BuildContext context,
+    List<PortfolioItemModel> items,
+    int initialIndex, {
+    required String barberId,
+  }) {
+    return PortfolioGalleryViewer.show(
+      context,
+      items,
+      initialIndex,
+      barberId: barberId,
+    );
+  }
 
   static Future<void> show(BuildContext context, PortfolioItemModel item) {
     return Navigator.of(context).push(
