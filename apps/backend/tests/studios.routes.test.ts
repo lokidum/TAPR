@@ -1,4 +1,8 @@
 jest.mock('ioredis', () => require('ioredis-mock'));
+jest.mock('../src/services/stripe.service', () => ({
+  createConnectAccount: jest.fn().mockResolvedValue({ id: 'acct_new123' }),
+  createConnectOnboardingUrl: jest.fn().mockResolvedValue('https://connect.stripe.com/onboarding/abc'),
+}));
 jest.mock('../src/services/prisma.service', () => ({
   prisma: {
     studioProfile: {
@@ -370,6 +374,63 @@ describe('PATCH /api/v1/studios/me', () => {
       .send({ businessName: 'Test' });
 
     expect(res.status).toBe(403);
+  });
+});
+
+// ── GET /studios/me/stripe-onboarding-url ──────────────────────────────────────
+
+describe('GET /api/v1/studios/me/stripe-onboarding-url', () => {
+  const stripeService = require('../src/services/stripe.service');
+
+  beforeEach(() => {
+    mockUpsert.mockResolvedValue(STUDIO_PROFILE);
+    mockFindUnique.mockResolvedValue({ ...STUDIO_PROFILE, stripeAccountId: 'acct_existing' });
+  });
+
+  it('returns 200 with url when studio has stripeAccountId', async () => {
+    const res = await request(buildApp())
+      .get('/api/v1/studios/me/stripe-onboarding-url')
+      .set('Authorization', `Bearer ${studioToken()}`)
+      .query({ returnUrl: 'https://tapr.com.au/stripe-return', refreshUrl: 'https://tapr.com.au/stripe-refresh' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.url).toBe('https://connect.stripe.com/onboarding/abc');
+    expect(stripeService.createConnectAccount).not.toHaveBeenCalled();
+  });
+
+  it('creates Connect account and returns url when studio has no stripeAccountId', async () => {
+    mockFindUnique
+      .mockResolvedValueOnce({ ...STUDIO_PROFILE, stripeAccountId: null })
+      .mockResolvedValueOnce({ ...STUDIO_PROFILE, stripeAccountId: 'acct_new123' });
+    mockUpdate.mockResolvedValue({ ...STUDIO_PROFILE, stripeAccountId: 'acct_new123' });
+
+    const res = await request(buildApp())
+      .get('/api/v1/studios/me/stripe-onboarding-url')
+      .set('Authorization', `Bearer ${studioToken()}`)
+      .query({ returnUrl: 'https://tapr.com.au/stripe-return', refreshUrl: 'https://tapr.com.au/stripe-refresh' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.url).toBe('https://connect.stripe.com/onboarding/abc');
+    expect(stripeService.createConnectAccount).toHaveBeenCalledWith('AU');
+  });
+
+  it('returns 400 when returnUrl or refreshUrl missing', async () => {
+    const res = await request(buildApp())
+      .get('/api/v1/studios/me/stripe-onboarding-url')
+      .set('Authorization', `Bearer ${studioToken()}`)
+      .query({ returnUrl: 'https://tapr.com.au/stripe-return' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('returns 401 with no token', async () => {
+    const res = await request(buildApp())
+      .get('/api/v1/studios/me/stripe-onboarding-url')
+      .query({ returnUrl: 'https://tapr.com.au/stripe-return', refreshUrl: 'https://tapr.com.au/stripe-refresh' });
+
+    expect(res.status).toBe(401);
   });
 });
 

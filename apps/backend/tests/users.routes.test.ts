@@ -10,6 +10,10 @@ jest.mock('../src/services/prisma.service', () => ({
 jest.mock('../src/services/redis.service', () => ({
   deleteAllUserTokens: jest.fn(),
 }));
+jest.mock('../src/services/storage.service', () => ({
+  generateUploadPresignedUrl: jest.fn().mockResolvedValue('https://s3.presigned.example/upload'),
+  generateDownloadUrl: jest.fn().mockReturnValue('https://cdn.example.com/avatars/uuid/abc.jpg'),
+}));
 
 import request from 'supertest';
 import express from 'express';
@@ -183,6 +187,41 @@ describe('GET /api/v1/users/me', () => {
 
   it('returns 401 with no token', async () => {
     const res = await request(buildApp()).get('/api/v1/users/me');
+    expect(res.status).toBe(401);
+  });
+});
+
+// ── POST /users/me/avatar-upload-url ──────────────────────────────────────────
+
+describe('POST /api/v1/users/me/avatar-upload-url', () => {
+  it('returns 200 with uploadUrl, key, cdnUrl for valid image', async () => {
+    const res = await request(buildApp())
+      .post('/api/v1/users/me/avatar-upload-url')
+      .set('Authorization', `Bearer ${token('consumer-uuid', 'consumer')}`)
+      .send({ fileName: 'photo.jpg', mimeType: 'image/jpeg' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.uploadUrl).toBeDefined();
+    expect(res.body.data.key).toMatch(/^avatars\/consumer-uuid\/[a-f0-9-]+\.jpg$/);
+    expect(res.body.data.cdnUrl).toBeDefined();
+  });
+
+  it('returns 400 for invalid mimeType', async () => {
+    const res = await request(buildApp())
+      .post('/api/v1/users/me/avatar-upload-url')
+      .set('Authorization', `Bearer ${token('consumer-uuid', 'consumer')}`)
+      .send({ fileName: 'photo.jpg', mimeType: 'application/pdf' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('returns 401 with no token', async () => {
+    const res = await request(buildApp())
+      .post('/api/v1/users/me/avatar-upload-url')
+      .send({ fileName: 'photo.jpg', mimeType: 'image/jpeg' });
+
     expect(res.status).toBe(401);
   });
 });

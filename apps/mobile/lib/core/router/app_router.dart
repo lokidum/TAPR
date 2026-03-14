@@ -12,7 +12,6 @@ import 'package:tapr/features/auth/presentation/screens/phone_input_screen.dart'
 import 'package:tapr/features/auth/presentation/screens/welcome_screen.dart';
 import 'package:tapr/features/barber/presentation/screens/barber_bookings_screen.dart';
 import 'package:tapr/features/barber/presentation/screens/barber_home_screen.dart';
-import 'package:tapr/features/barber/screens/barber_profile_screen.dart';
 import 'package:tapr/features/barber/presentation/screens/barber_public_profile_screen.dart';
 import 'package:tapr/features/marketplace/presentation/screens/chair_map_screen.dart';
 import 'package:tapr/features/barber/presentation/screens/portfolio_screen.dart';
@@ -25,12 +24,11 @@ import 'package:tapr/features/events/screens/events_screen.dart';
 import 'package:tapr/features/legal/presentation/screens/legal_hub_screen.dart';
 import 'package:tapr/features/marketplace/screens/marketplace_screen.dart';
 import 'package:tapr/features/notifications/presentation/screens/notifications_screen.dart';
-import 'package:tapr/features/profile/screens/profile_screen.dart';
+import 'package:tapr/features/profile/presentation/screens/profile_screen.dart';
 import 'package:tapr/features/studio/presentation/screens/chair_manager_screen.dart';
 import 'package:tapr/features/studio/presentation/screens/studio_dashboard_screen.dart';
 import 'package:tapr/features/studio/presentation/screens/talent_scout_screen.dart';
 import 'package:tapr/features/studio/screens/studio_events_screen.dart';
-import 'package:tapr/features/studio/screens/studio_profile_screen.dart';
 import 'package:tapr/features/studio/screens/studio_public_profile_screen.dart';
 import 'package:tapr/core/services/push_notification_service.dart';
 import 'package:tapr/shared/widgets/error_view.dart';
@@ -227,7 +225,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: '/barber/profile',
                 name: RouteNames.barberProfile,
-                builder: (context, state) => const BarberProfileScreen(),
+                builder: (context, state) => const ProfileScreen(),
               ),
             ],
           ),
@@ -280,7 +278,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: '/studio/profile',
                 name: RouteNames.studioProfile,
-                builder: (context, state) => const StudioProfileScreen(),
+                builder: (context, state) => const ProfileScreen(),
               ),
             ],
           ),

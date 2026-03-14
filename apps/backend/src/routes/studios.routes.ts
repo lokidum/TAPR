@@ -2,6 +2,10 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../services/prisma.service';
+import {
+  createConnectAccount,
+  createConnectOnboardingUrl,
+} from '../services/stripe.service';
 import { authenticate, requireRole } from '../middleware/auth.middleware';
 import { errorResponse, successResponse } from '../types/api';
 
@@ -38,6 +42,11 @@ const nearbyQuerySchema = z.object({
 const chairsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).optional().default(1),
   limit: z.coerce.number().int().min(1).max(100).optional().default(20),
+});
+
+const stripeOnboardingQuerySchema = z.object({
+  returnUrl: z.string().url(),
+  refreshUrl: z.string().url(),
 });
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -251,6 +260,53 @@ router.patch(
       };
 
       res.status(200).json(successResponse(profile));
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ── GET /studios/me/stripe-onboarding-url ─────────────────────────────────────
+
+router.get(
+  '/me/stripe-onboarding-url',
+  authenticate,
+  requireRole('studio'),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { sub: userId } = req.user!;
+      const { returnUrl, refreshUrl } = stripeOnboardingQuerySchema.parse(req.query);
+
+      await prisma.studioProfile.upsert({
+        where: { userId },
+        update: {},
+        create: { userId, businessName: 'New Studio' },
+      });
+
+      let profile = await prisma.studioProfile.findUnique({ where: { userId } });
+      if (!profile) {
+        res.status(404).json(errorResponse('NOT_FOUND', 'Studio profile not found'));
+        return;
+      }
+
+      if (!profile.stripeAccountId) {
+        const account = await createConnectAccount('AU');
+        await prisma.studioProfile.update({
+          where: { userId },
+          data: { stripeAccountId: account.id },
+        });
+        profile = (await prisma.studioProfile.findUnique({ where: { userId } }))!;
+      }
+
+      const accountId = profile.stripeAccountId;
+      if (!accountId) {
+        res.status(500).json(errorResponse('INTERNAL_ERROR', 'Stripe account not found'));
+        return;
+      }
+
+      const url = await createConnectOnboardingUrl(accountId, returnUrl, refreshUrl);
+
+      res.status(200).json(successResponse({ url }));
     } catch (err) {
       next(err);
     }

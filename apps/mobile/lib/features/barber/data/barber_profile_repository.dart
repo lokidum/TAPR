@@ -57,6 +57,55 @@ class BarberProfileRepository {
     final total = (data['total'] as num).toInt();
     return (reviews: reviews, total: total);
   }
+
+  /// PATCH /barbers/me
+  Future<void> updateBarber({
+    String? abn,
+    String? aqfCertLevel,
+    String? instagramHandle,
+    String? tiktokHandle,
+    int? serviceRadiusKm,
+    String? certDocumentUrl,
+  }) async {
+    final body = <String, dynamic>{};
+    if (abn != null) body['abn'] = abn;
+    if (aqfCertLevel != null) body['aqfCertLevel'] = aqfCertLevel;
+    if (instagramHandle != null) body['instagramHandle'] = instagramHandle;
+    if (tiktokHandle != null) body['tiktokHandle'] = tiktokHandle;
+    if (serviceRadiusKm != null) body['serviceRadiusKm'] = serviceRadiusKm;
+    if (certDocumentUrl != null) body['certDocumentUrl'] = certDocumentUrl;
+    await _dio.patch<Map<String, dynamic>>('/barbers/me', data: body);
+  }
+
+  /// POST /barbers/me/cert-upload-url
+  Future<({String uploadUrl, String key, String cdnUrl})> fetchCertUploadUrl(
+    String fileName,
+    String mimeType,
+  ) async {
+    final response = await _dio.post<Map<String, dynamic>>(
+      '/barbers/me/cert-upload-url',
+      data: {'fileName': fileName, 'mimeType': mimeType},
+    );
+    final data = response.data!['data'] as Map<String, dynamic>;
+    return (
+      uploadUrl: data['uploadUrl'] as String,
+      key: data['key'] as String,
+      cdnUrl: data['cdnUrl'] as String,
+    );
+  }
+
+  /// GET /barbers/me/stripe-onboarding-url
+  Future<String> fetchStripeOnboardingUrl({
+    required String returnUrl,
+    required String refreshUrl,
+  }) async {
+    final response = await _dio.get<Map<String, dynamic>>(
+      '/barbers/me/stripe-onboarding-url',
+      queryParameters: {'returnUrl': returnUrl, 'refreshUrl': refreshUrl},
+    );
+    final data = response.data!['data'] as Map<String, dynamic>;
+    return data['url'] as String;
+  }
 }
 
 final barberProfileRepositoryProvider =

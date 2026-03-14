@@ -39,6 +39,7 @@ dependencies:
   video_player: ^2.8.6
   chewie: ^1.8.1
   image_picker: ^1.0.7
+  file_picker: ^8.0.0
   cached_network_image: ^3.3.1
   share_plus: ^10.0.0
 
@@ -71,6 +72,12 @@ dependencies:
 
   # Deep links
   app_links: ^6.1.0
+
+  # WebView
+  webview_flutter: ^4.4.0
+
+  # URLs
+  url_launcher: ^6.2.5
 
   # Logging
   logger: ^2.3.0

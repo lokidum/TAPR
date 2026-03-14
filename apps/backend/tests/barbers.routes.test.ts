@@ -14,6 +14,16 @@ jest.mock('../src/services/prisma.service', () => ({
 jest.mock('../src/services/redis.service', () => ({
   publishToChannel: jest.fn(),
 }));
+jest.mock('../src/services/storage.service', () => ({
+  generateUploadPresignedUrl: jest.fn().mockResolvedValue('https://s3.presigned.example/upload'),
+  generateDownloadUrl: jest.fn().mockReturnValue('https://cdn.example.com/certs/bp-uuid/abc.pdf'),
+  objectExists: jest.fn().mockResolvedValue(true),
+  deleteObject: jest.fn().mockResolvedValue(undefined),
+}));
+jest.mock('../src/services/stripe.service', () => ({
+  createConnectAccount: jest.fn().mockResolvedValue({ id: 'acct_new123' }),
+  createConnectOnboardingUrl: jest.fn().mockResolvedValue('https://connect.stripe.com/onboarding/abc'),
+}));
 
 import request from 'supertest';
 import express from 'express';
@@ -315,6 +325,113 @@ describe('PATCH /api/v1/barbers/me', () => {
       .send({ bio: 'hello' });
 
     expect(res.status).toBe(403);
+  });
+});
+
+// ── POST /barbers/me/cert-upload-url ───────────────────────────────────────────
+
+describe('POST /api/v1/barbers/me/cert-upload-url', () => {
+  beforeEach(() => {
+    mockFindUnique.mockResolvedValue(BARBER_PROFILE);
+  });
+
+  it('returns 200 with uploadUrl, key, cdnUrl for valid PDF', async () => {
+    const res = await request(buildApp())
+      .post('/api/v1/barbers/me/cert-upload-url')
+      .set('Authorization', `Bearer ${barberToken()}`)
+      .send({ fileName: 'cert.pdf', mimeType: 'application/pdf' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.uploadUrl).toBeDefined();
+    expect(res.body.data.key).toMatch(/^certs\/bp-uuid\/[a-f0-9-]+\.pdf$/);
+    expect(res.body.data.cdnUrl).toBeDefined();
+  });
+
+  it('returns 400 for invalid mimeType', async () => {
+    const res = await request(buildApp())
+      .post('/api/v1/barbers/me/cert-upload-url')
+      .set('Authorization', `Bearer ${barberToken()}`)
+      .send({ fileName: 'cert.pdf', mimeType: 'image/webp' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('returns 404 when barber profile not found', async () => {
+    mockFindUnique.mockResolvedValue(null);
+
+    const res = await request(buildApp())
+      .post('/api/v1/barbers/me/cert-upload-url')
+      .set('Authorization', `Bearer ${barberToken()}`)
+      .send({ fileName: 'cert.pdf', mimeType: 'application/pdf' });
+
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('returns 401 with no token', async () => {
+    const res = await request(buildApp())
+      .post('/api/v1/barbers/me/cert-upload-url')
+      .send({ fileName: 'cert.pdf', mimeType: 'application/pdf' });
+
+    expect(res.status).toBe(401);
+  });
+});
+
+// ── GET /barbers/me/stripe-onboarding-url ──────────────────────────────────────
+
+describe('GET /api/v1/barbers/me/stripe-onboarding-url', () => {
+  const stripeService = require('../src/services/stripe.service');
+
+  beforeEach(() => {
+    mockFindUnique.mockResolvedValue({ ...BARBER_PROFILE, stripeAccountId: 'acct_existing' });
+  });
+
+  it('returns 200 with url when barber has stripeAccountId', async () => {
+    const res = await request(buildApp())
+      .get('/api/v1/barbers/me/stripe-onboarding-url')
+      .set('Authorization', `Bearer ${barberToken()}`)
+      .query({ returnUrl: 'https://tapr.com.au/stripe-return', refreshUrl: 'https://tapr.com.au/stripe-refresh' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.url).toBe('https://connect.stripe.com/onboarding/abc');
+    expect(stripeService.createConnectAccount).not.toHaveBeenCalled();
+  });
+
+  it('creates Connect account and returns url when barber has no stripeAccountId', async () => {
+    mockFindUnique
+      .mockResolvedValueOnce({ ...BARBER_PROFILE, stripeAccountId: null })
+      .mockResolvedValueOnce({ ...BARBER_PROFILE, stripeAccountId: 'acct_new123' });
+    mockUpdate.mockResolvedValue({ ...BARBER_PROFILE, stripeAccountId: 'acct_new123' });
+
+    const res = await request(buildApp())
+      .get('/api/v1/barbers/me/stripe-onboarding-url')
+      .set('Authorization', `Bearer ${barberToken()}`)
+      .query({ returnUrl: 'https://tapr.com.au/stripe-return', refreshUrl: 'https://tapr.com.au/stripe-refresh' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.url).toBe('https://connect.stripe.com/onboarding/abc');
+    expect(stripeService.createConnectAccount).toHaveBeenCalledWith('AU');
+  });
+
+  it('returns 400 when returnUrl or refreshUrl missing', async () => {
+    const res = await request(buildApp())
+      .get('/api/v1/barbers/me/stripe-onboarding-url')
+      .set('Authorization', `Bearer ${barberToken()}`)
+      .query({ returnUrl: 'https://tapr.com.au/stripe-return' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('returns 401 with no token', async () => {
+    const res = await request(buildApp())
+      .get('/api/v1/barbers/me/stripe-onboarding-url')
+      .query({ returnUrl: 'https://tapr.com.au/stripe-return', refreshUrl: 'https://tapr.com.au/stripe-refresh' });
+
+    expect(res.status).toBe(401);
   });
 });
 

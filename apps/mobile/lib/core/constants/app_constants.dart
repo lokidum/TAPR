@@ -4,6 +4,9 @@ class AppConstants {
   static const String appName = 'TAPR';
   static const String appBaseUrl = 'https://tapr.com.au';
   static const String apiBaseUrl = 'https://api.tapr.com.au/api/v1';
+  static const String supportUrl = 'https://tapr.com.au/support';
+  static const String termsUrl = 'https://tapr.com.au/terms';
+  static const String privacyPolicyUrl = 'https://tapr.com.au/privacy';
   static const int connectTimeoutMs = 15000;
   static const int receiveTimeoutMs = 15000;
   static const int defaultPageSize = 20;

@@ -10,6 +10,10 @@ import {
   objectExists,
   deleteObject,
 } from '../services/storage.service';
+import {
+  createConnectAccount,
+  createConnectOnboardingUrl,
+} from '../services/stripe.service';
 import { authenticate, requireRole } from '../middleware/auth.middleware';
 import { errorResponse, successResponse } from '../types/api';
 
@@ -24,6 +28,7 @@ const updateBarberSchema = z.object({
   abn: z.string().regex(/^\d{11}$/, 'ABN must be exactly 11 digits').optional(),
   aqfCertLevel: z.enum(['cert_iii', 'cert_iv', 'diploma']).optional(),
   serviceRadiusKm: z.number().int().min(1).max(50).optional(),
+  certDocumentUrl: z.string().url().nullable().optional(),
   levelUpPending: z.literal(false).optional(),
 });
 
@@ -205,6 +210,93 @@ router.patch(
         res.status(404).json(errorResponse('NOT_FOUND', 'Barber profile not found'));
         return;
       }
+      next(err);
+    }
+  }
+);
+
+// ── POST /barbers/me/cert-upload-url ──────────────────────────────────────────
+
+const certUploadUrlSchema = z.object({
+  fileName: z.string().min(1).max(255),
+  mimeType: z.enum(['application/pdf', 'image/jpeg', 'image/png']),
+});
+
+router.post(
+  '/me/cert-upload-url',
+  authenticate,
+  requireRole('barber'),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { sub: userId } = req.user!;
+      const { fileName, mimeType } = certUploadUrlSchema.parse(req.body);
+
+      const barberProfile = await prisma.barberProfile.findUnique({ where: { userId } });
+      if (!barberProfile) {
+        res.status(404).json(errorResponse('NOT_FOUND', 'Barber profile not found'));
+        return;
+      }
+
+      const dotIdx = fileName.lastIndexOf('.');
+      const ext = dotIdx >= 0 ? fileName.slice(dotIdx).toLowerCase() : '.pdf';
+      const uuid = crypto.randomUUID();
+      const key = `certs/${barberProfile.id}/${uuid}${ext}`;
+
+      const uploadUrl = await generateUploadPresignedUrl(key, mimeType, 5);
+      const cdnUrl = generateDownloadUrl(key);
+
+      res.status(200).json(successResponse({ uploadUrl, key, cdnUrl }));
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ── GET /barbers/me/stripe-onboarding-url ────────────────────────────────────
+
+const stripeOnboardingQuerySchema = z.object({
+  returnUrl: z.string().url(),
+  refreshUrl: z.string().url(),
+});
+
+router.get(
+  '/me/stripe-onboarding-url',
+  authenticate,
+  requireRole('barber'),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { sub: userId } = req.user!;
+      const { returnUrl, refreshUrl } = stripeOnboardingQuerySchema.parse(req.query);
+
+      let profile = await prisma.barberProfile.findUnique({ where: { userId } });
+      if (!profile) {
+        res.status(404).json(errorResponse('NOT_FOUND', 'Barber profile not found'));
+        return;
+      }
+
+      if (!profile.stripeAccountId) {
+        const account = await createConnectAccount('AU');
+        await prisma.barberProfile.update({
+          where: { userId },
+          data: { stripeAccountId: account.id },
+        });
+        profile = (await prisma.barberProfile.findUnique({ where: { userId } }))!;
+      }
+
+      const accountId = profile.stripeAccountId;
+      if (!accountId) {
+        res.status(500).json(errorResponse('INTERNAL_ERROR', 'Stripe account not found'));
+        return;
+      }
+
+      const url = await createConnectOnboardingUrl(
+        accountId,
+        returnUrl,
+        refreshUrl
+      );
+
+      res.status(200).json(successResponse({ url }));
+    } catch (err) {
       next(err);
     }
   }

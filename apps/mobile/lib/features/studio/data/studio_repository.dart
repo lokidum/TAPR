@@ -46,6 +46,38 @@ class StudioRepository {
         .map((e) => StudioRentalSummary.fromJson(e as Map<String, dynamic>))
         .toList();
   }
+
+  /// GET /studios/me/stripe-onboarding-url
+  Future<String> fetchStripeOnboardingUrl({
+    required String returnUrl,
+    required String refreshUrl,
+  }) async {
+    final response = await _dio.get<Map<String, dynamic>>(
+      '/studios/me/stripe-onboarding-url',
+      queryParameters: {'returnUrl': returnUrl, 'refreshUrl': refreshUrl},
+    );
+    final data = response.data!['data'] as Map<String, dynamic>;
+    return data['url'] as String;
+  }
+
+  /// PATCH /studios/me
+  Future<void> updateStudio({
+    String? businessName,
+    String? abn,
+    String? addressLine1,
+    String? suburb,
+    String? state,
+    String? postcode,
+  }) async {
+    final body = <String, dynamic>{};
+    if (businessName != null) body['businessName'] = businessName;
+    if (abn != null) body['abn'] = abn;
+    if (addressLine1 != null) body['addressLine1'] = addressLine1;
+    if (suburb != null) body['suburb'] = suburb;
+    if (state != null) body['state'] = state;
+    if (postcode != null) body['postcode'] = postcode;
+    await _dio.patch<Map<String, dynamic>>('/studios/me', data: body);
+  }
 }
 
 final studioRepositoryProvider = Provider<StudioRepository>((ref) {
