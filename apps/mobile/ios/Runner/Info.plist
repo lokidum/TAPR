@@ -79,5 +79,15 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>We show you nearby barbers and studios based on your location.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Barbers using On-Call mode need background location so clients can find them.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Record portfolio videos and take before/after photos.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Upload photos and videos to your portfolio.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Record audio when filming portfolio videos.</string>
 </dict>
 </plist>

@@ -1,0 +1,2 @@
+app_identifier("com.tapr.app")
+apple_id(ENV["APPLE_ID"])
