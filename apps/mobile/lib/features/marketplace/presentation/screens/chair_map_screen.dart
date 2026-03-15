@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -44,6 +46,10 @@ class ChairMapScreen extends ConsumerStatefulWidget {
 
 class _ChairMapScreenState extends ConsumerState<ChairMapScreen> {
   bool _isMapView = true;
+  Timer? _pollTimer;
+  Timer? _lastUpdateClearTimer;
+  DateTime? _lastFetchAt;
+  DateTime? _lastUpdateAt;
 
   @override
   void initState() {
@@ -54,8 +60,63 @@ class _ChairMapScreenState extends ConsumerState<ChairMapScreen> {
   }
 
   @override
+  void dispose() {
+    _pollTimer?.cancel();
+    _lastUpdateClearTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startPollingIfReady(ChairMarketplaceState state) {
+    if (_pollTimer != null) return;
+    if (state.userLat == null || state.userLng == null || state.isLoading) return;
+    _lastFetchAt ??= DateTime.now();
+    // Could be optimised with tab visibility awareness in a future iteration.
+    _pollTimer = Timer.periodic(const Duration(seconds: 30), (_) => _pollUpdates());
+  }
+
+  Future<void> _pollUpdates() async {
+    final controller = ref.read(chairMarketplaceControllerProvider.notifier);
+    final repo = ref.read(chairMarketplaceRepositoryProvider);
+    final state = ref.read(chairMarketplaceControllerProvider);
+    if (state.userLat == null || state.userLng == null) return;
+
+    try {
+      final since = _lastFetchAt ?? DateTime.now().subtract(const Duration(minutes: 5));
+      final listingType = state.sickCallOnly ? 'sick_call' : null;
+      final updates = await repo.fetchUpdates(
+        since: since,
+        lat: state.userLat!,
+        lng: state.userLng!,
+        radiusKm: state.radiusKm,
+        listingType: listingType,
+      );
+      controller.mergeUpdates(updates);
+      _lastFetchAt = DateTime.now();
+      if (updates.isNotEmpty && mounted) {
+        setState(() {
+          _lastUpdateAt = DateTime.now();
+          _lastUpdateClearTimer?.cancel();
+          _lastUpdateClearTimer = Timer(const Duration(seconds: 5), () {
+            if (mounted) setState(() => _lastUpdateAt = null);
+          });
+        });
+      }
+    } catch (_) {
+      // Silently ignore poll errors; next poll will retry
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final state = ref.watch(chairMarketplaceControllerProvider);
+    ref.listen<ChairMarketplaceState>(chairMarketplaceControllerProvider, (prev, next) {
+      if (next.userLat != null && next.userLng != null && !next.isLoading) {
+        if (prev?.isLoading == true) {
+          _lastFetchAt = DateTime.now();
+        }
+        _startPollingIfReady(next);
+      }
+    });
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -109,7 +170,12 @@ class _ChairMapScreenState extends ConsumerState<ChairMapScreen> {
                 )
               : _isMapView
                   ? _MapView(state: state)
-                  : _ListView(state: state),
+                  : _ListView(
+                      state: state,
+                      lastUpdateAt: _lastUpdateAt,
+                      onRefresh: () =>
+                          ref.read(chairMarketplaceControllerProvider.notifier).refresh(),
+                    ),
     );
   }
 }
@@ -304,9 +370,15 @@ class _MapControls extends StatelessWidget {
 }
 
 class _ListView extends ConsumerStatefulWidget {
-  const _ListView({required this.state});
+  const _ListView({
+    required this.state,
+    this.lastUpdateAt,
+    required this.onRefresh,
+  });
 
   final ChairMarketplaceState state;
+  final DateTime? lastUpdateAt;
+  final Future<void> Function() onRefresh;
 
   @override
   ConsumerState<_ListView> createState() => _ListViewState();
@@ -352,11 +424,38 @@ class _ListViewState extends ConsumerState<_ListView> {
       );
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: displayedListings.length + (hasMore ? 1 : 0),
-      itemBuilder: (context, index) {
-        if (index == displayedListings.length) {
+    final showUpdatedChip = widget.lastUpdateAt != null;
+    final listItemCount = displayedListings.length + (hasMore ? 1 : 0);
+    final totalCount = showUpdatedChip ? listItemCount + 1 : listItemCount;
+
+    return RefreshIndicator(
+      onRefresh: widget.onRefresh,
+      color: AppColors.gold,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: totalCount,
+        itemBuilder: (context, index) {
+          if (showUpdatedChip && index == 0) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.gold.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  'Updated just now',
+                  style: AppTextStyles.caption.copyWith(
+                    color: AppColors.gold,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            );
+          }
+          final listIndex = showUpdatedChip ? index - 1 : index;
+          if (listIndex == displayedListings.length) {
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 16),
             child: Center(
@@ -371,13 +470,14 @@ class _ListViewState extends ConsumerState<_ListView> {
             ),
           );
         }
-        final listing = displayedListings[index];
+        final listing = displayedListings[listIndex];
         return _ChairListCard(
           listing: listing,
           barberLevel: state.barberLevel,
           onTap: () => _showChairListingSheet(context, ref, listing, state),
         );
       },
+    ),
     );
   }
 }

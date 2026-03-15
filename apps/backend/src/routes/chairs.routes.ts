@@ -14,6 +14,7 @@ import {
   cancelEscrowReleaseJob,
   enqueueNotification,
 } from '../services/queue.service';
+import { publishToChannel } from '../services/redis.service';
 import { authenticate, requireRole } from '../middleware/auth.middleware';
 import { errorResponse, successResponse } from '../types/api';
 import logger from '../utils/logger';
@@ -50,6 +51,16 @@ const createChairSchema = z
   );
 
 const nearbyQuerySchema = z.object({
+  lat: z.coerce.number().min(-90).max(90),
+  lng: z.coerce.number().min(-180).max(180),
+  radiusKm: z.coerce.number().min(1).max(100).optional().default(10),
+  listingType: z.enum(['daily', 'weekly', 'sick_call', 'permanent']).optional(),
+  minLevel: z.coerce.number().int().min(1).max(6).optional(),
+  maxPrice: z.coerce.number().int().min(0).optional(),
+});
+
+const updatesQuerySchema = z.object({
+  since: z.string().datetime({ message: 'since must be ISO 8601' }),
   lat: z.coerce.number().min(-90).max(90),
   lng: z.coerce.number().min(-180).max(180),
   radiusKm: z.coerce.number().min(1).max(100).optional().default(10),
@@ -260,6 +271,89 @@ router.post(
 
       logger.info('Chair listing created', { listingId: listing.id, studioId });
       res.status(201).json(successResponse({ listing }));
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ── GET /chairs/updates ────────────────────────────────────────────────────────
+// Must be before /nearby and /:id
+
+router.get(
+  '/updates',
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { since, lat, lng, radiusKm, listingType, minLevel, maxPrice } =
+        updatesQuerySchema.parse(req.query);
+
+      const sinceDate = new Date(since);
+      const now = new Date();
+      const cutoff = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+      const rows = await prisma.$queryRaw<NearbyChairRow[]>`
+        SELECT
+          cl.id,
+          cl.studio_id,
+          cl.title,
+          cl.description,
+          cl.price_cents_per_day,
+          cl.price_cents_per_week,
+          cl.available_from,
+          cl.available_to,
+          cl.listing_type,
+          cl.min_level_required,
+          cl.is_sick_call,
+          cl.sick_call_premium_pct,
+          cl.status,
+          sp.business_name AS studio_name,
+          ST_Y(sp.coordinates::geometry)::double precision AS lat,
+          ST_X(sp.coordinates::geometry)::double precision AS lng,
+          ROUND(
+            (ST_Distance(
+              sp.coordinates::geography,
+              ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography
+            ) / 1000.0)::numeric,
+            2
+          ) AS distance_km
+        FROM chair_listings cl
+        JOIN studio_profiles sp ON cl.studio_id = sp.id
+        WHERE
+          cl.updated_at >= ${sinceDate}::timestamptz
+          AND cl.available_from <= ${cutoff}::timestamptz
+          AND sp.coordinates IS NOT NULL
+          AND ST_DWithin(
+            sp.coordinates::geography,
+            ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography,
+            ${radiusKm * 1000}
+          )
+          AND (${listingType ?? null}::text IS NULL OR cl.listing_type = ${listingType ?? null})
+          AND (${minLevel ?? null}::int IS NULL OR cl.min_level_required <= ${minLevel ?? null})
+          AND (${maxPrice ?? null}::int IS NULL OR cl.price_cents_per_day <= ${maxPrice ?? null})
+        ORDER BY distance_km ASC
+      `;
+
+      const listings = rows.map(r => ({
+        id: r.id,
+        studioId: r.studio_id,
+        title: r.title,
+        description: r.description,
+        priceCentsPerDay: r.price_cents_per_day,
+        priceCentsPerWeek: r.price_cents_per_week,
+        availableFrom: r.available_from,
+        availableTo: r.available_to,
+        listingType: r.listing_type,
+        minLevelRequired: r.min_level_required,
+        isSickCall: r.is_sick_call,
+        sickCallPremiumPct: r.sick_call_premium_pct,
+        status: r.status,
+        studioName: r.studio_name,
+        distanceKm: Number(r.distance_km),
+        lat: Number(r.lat),
+        lng: Number(r.lng),
+      }));
+
+      res.status(200).json(successResponse({ listings }));
     } catch (err) {
       next(err);
     }
@@ -528,7 +622,7 @@ router.post(
 
       const listing = await prisma.chairListing.findUnique({
         where: { id: listingId },
-        include: { studio: { select: { stripeAccountId: true } } },
+        include: { studio: { select: { stripeAccountId: true, suburb: true } } },
       });
 
       if (!listing) {
@@ -604,6 +698,15 @@ router.post(
         barberId: barberProfile.id,
       });
 
+      if (listing.studio.suburb) {
+        await publishToChannel(
+          `chair_updates:${listing.studio.suburb}`,
+          JSON.stringify({ listingId, status: 'reserved' })
+        );
+      } else {
+        // Redis publish skipped — studio has no suburb set. Updates still delivered via GET /chairs/updates polling.
+      }
+
       res.status(201).json(successResponse({
         rental: { ...rental, clientSecret: paymentIntent.client_secret },
       }));
@@ -630,7 +733,7 @@ router.patch(
 
       const listing = await prisma.chairListing.findUnique({
         where: { id: listingId },
-        include: { studio: { select: { stripeAccountId: true } } },
+        include: { studio: { select: { stripeAccountId: true, suburb: true } } },
       });
 
       if (!listing || listing.studioId !== studioId) {
@@ -686,6 +789,15 @@ router.patch(
         },
         ESCROW_RELEASE_DELAY_MS
       );
+
+      if (listing.studio.suburb) {
+        await publishToChannel(
+          `chair_updates:${listing.studio.suburb}`,
+          JSON.stringify({ listingId, status: 'available' })
+        );
+      } else {
+        // Redis publish skipped — studio has no suburb set. Updates still delivered via GET /chairs/updates polling.
+      }
 
       const updated = await prisma.chairRental.findUnique({
         where: { id: rentalId },

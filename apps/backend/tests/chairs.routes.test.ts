@@ -33,6 +33,9 @@ jest.mock('../src/services/queue.service', () => ({
   cancelEscrowReleaseJob: jest.fn().mockResolvedValue(true),
   enqueueNotification: jest.fn().mockResolvedValue(undefined),
 }));
+jest.mock('../src/services/redis.service', () => ({
+  publishToChannel: jest.fn().mockResolvedValue(undefined),
+}));
 
 import request from 'supertest';
 import express from 'express';
@@ -377,6 +380,66 @@ describe('GET /api/v1/chairs/nearby', () => {
 
   it('400 — missing lat', async () => {
     const res = await request(buildApp()).get('/api/v1/chairs/nearby?lng=151.2');
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('GET /api/v1/chairs/updates', () => {
+  const updatesRow = {
+    id: LISTING_ID,
+    studio_id: STUDIO_ID,
+    title: 'Prime Chair',
+    description: 'Corner',
+    price_cents_per_day: 5000,
+    price_cents_per_week: 25000,
+    available_from: new Date('2025-06-01'),
+    available_to: new Date('2025-06-30'),
+    listing_type: 'daily',
+    min_level_required: 1,
+    is_sick_call: false,
+    sick_call_premium_pct: 0,
+    status: 'available',
+    studio_name: 'Sharp Cuts',
+    distance_km: 2.5,
+    lat: -33.87,
+    lng: 151.2,
+  };
+
+  beforeEach(() => {
+    mockQueryRaw.mockResolvedValue([updatesRow]);
+  });
+
+  it('200 — returns chairs with updated_at >= since within radius', async () => {
+    const since = '2025-06-01T00:00:00.000Z';
+    const res = await request(buildApp())
+      .get(`/api/v1/chairs/updates?since=${encodeURIComponent(since)}&lat=-33.87&lng=151.2`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.listings).toHaveLength(1);
+    expect(res.body.data.listings[0].id).toBe(LISTING_ID);
+    expect(res.body.data.listings[0].status).toBe('available');
+    expect(res.body.data.listings[0].distanceKm).toBe(2.5);
+    expect(mockQueryRaw).toHaveBeenCalled();
+  });
+
+  it('works without auth', async () => {
+    const since = '2025-06-01T00:00:00.000Z';
+    const res = await request(buildApp())
+      .get(`/api/v1/chairs/updates?since=${encodeURIComponent(since)}&lat=-33.87&lng=151.2`);
+
+    expect(res.status).toBe(200);
+  });
+
+  it('400 — missing since', async () => {
+    const res = await request(buildApp())
+      .get('/api/v1/chairs/updates?lat=-33.87&lng=151.2');
+    expect(res.status).toBe(400);
+  });
+
+  it('400 — missing lat', async () => {
+    const since = '2025-06-01T00:00:00.000Z';
+    const res = await request(buildApp())
+      .get(`/api/v1/chairs/updates?since=${encodeURIComponent(since)}&lng=151.2`);
     expect(res.status).toBe(400);
   });
 });

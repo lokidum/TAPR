@@ -31,6 +31,31 @@ class ChairMarketplaceRepository {
         .toList();
   }
 
+  Future<List<NearbyChairListing>> fetchUpdates({
+    required DateTime since,
+    required double lat,
+    required double lng,
+    int radiusKm = 10,
+    String? listingType,
+  }) async {
+    final response = await _dio.get<Map<String, dynamic>>(
+      '/chairs/updates',
+      queryParameters: {
+        'since': since.toUtc().toIso8601String(),
+        'lat': lat,
+        'lng': lng,
+        'radiusKm': radiusKm,
+        if (listingType != null) 'listingType': listingType,
+      },
+    );
+    final data = response.data!['data'] as Map<String, dynamic>;
+    final raw = data['listings'] as List<dynamic>;
+    return raw
+        .map((e) =>
+            NearbyChairListing.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
   Future<Map<String, dynamic>> fetchListing(String id) async {
     final response = await _dio.get<Map<String, dynamic>>('/chairs/$id');
     final data = response.data!['data'] as Map<String, dynamic>;

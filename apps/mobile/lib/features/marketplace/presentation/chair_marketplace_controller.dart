@@ -119,6 +119,20 @@ class ChairMarketplaceController extends StateNotifier<ChairMarketplaceState> {
   Future<void> refresh() async {
     await loadNearby();
   }
+
+  void mergeUpdates(List<NearbyChairListing> updates) {
+    final byId = <String, NearbyChairListing>{
+      for (final l in state.listings) l.id: l,
+    };
+    for (final u in updates) {
+      byId[u.id] = u;
+    }
+    final merged = byId.values
+        .where((l) => l.status == 'available')
+        .toList()
+      ..sort((a, b) => a.distanceKm.compareTo(b.distanceKm));
+    state = state.copyWith(listings: merged);
+  }
 }
 
 final chairMarketplaceControllerProvider = StateNotifierProvider.autoDispose<
