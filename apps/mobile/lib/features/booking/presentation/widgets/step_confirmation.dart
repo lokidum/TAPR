@@ -148,7 +148,9 @@ class StepConfirmation extends StatelessWidget {
           ),
           child: AppButton(
             label: 'Confirm & Pay ${_formatCents(state.totalCents)}',
-            onPressed: state.isCreatingBooking ? null : onConfirmAndPay,
+            onPressed: (state.isCreatingBooking || state.selectedTime == null)
+                ? null
+                : onConfirmAndPay,
             isLoading: state.isCreatingBooking,
           ),
         ),

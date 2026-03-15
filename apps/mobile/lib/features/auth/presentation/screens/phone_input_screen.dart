@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:tapr/core/theme/app_colors.dart';
 import 'package:tapr/core/theme/app_text_styles.dart';
 import 'package:tapr/features/auth/presentation/auth_controller.dart';
+import 'package:tapr/features/auth/utils/phone_validation.dart';
 import 'package:tapr/shared/utils/snackbar_utils.dart';
 import 'package:tapr/shared/widgets/app_button.dart';
 
@@ -27,12 +28,18 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
   }
 
   Future<void> _onSendCode() async {
-    final phone = _phoneController.text.trim();
-    if (phone.isEmpty) {
+    final raw = _phoneController.text.trim();
+    if (raw.isEmpty) {
       showErrorSnackBar(context, 'Please enter your phone number.');
       return;
     }
+    if (!isValidAustralianPhone(raw)) {
+      showErrorSnackBar(context, 'Please enter a valid Australian phone number.');
+      return;
+    }
 
+    var phone = raw.replaceAll(RegExp(r'[\s\-]'), '');
+    if (phone.startsWith('0')) phone = phone.substring(1);
     final fullPhone = '+61$phone';
     final success =
         await ref.read(authControllerProvider.notifier).requestOtp(fullPhone);

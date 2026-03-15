@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:go_router/go_router.dart';
+import 'package:tapr/core/payment/stripe_payment_service.dart';
 import 'package:tapr/core/theme/app_colors.dart';
 import 'package:tapr/core/theme/app_text_styles.dart';
 import 'package:tapr/features/booking/presentation/booking_controller.dart';
@@ -30,6 +31,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
 
   Future<void> _handleConfirmAndPay() async {
     final notifier = ref.read(bookingControllerProvider(widget.barberId).notifier);
+    final paymentService = ref.read(stripePaymentServiceProvider);
 
     await notifier.createBooking();
 
@@ -37,29 +39,11 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
     if (state.bookingResult == null) return;
 
     try {
-      await Stripe.instance.initPaymentSheet(
-        paymentSheetParameters: SetupPaymentSheetParameters(
-          paymentIntentClientSecret: state.bookingResult!.clientSecret,
-          merchantDisplayName: 'TAPR',
-          style: ThemeMode.dark,
-          appearance: const PaymentSheetAppearance(
-            colors: PaymentSheetAppearanceColors(
-              background: AppColors.surface,
-              primary: AppColors.gold,
-              componentBackground: AppColors.background,
-              componentText: AppColors.white,
-              primaryText: AppColors.white,
-              secondaryText: AppColors.textSecondary,
-              icon: AppColors.gold,
-            ),
-            shapes: PaymentSheetShape(
-              borderRadius: 12,
-            ),
-          ),
-        ),
+      await paymentService.initPaymentSheet(
+        clientSecret: state.bookingResult!.clientSecret,
       );
 
-      await Stripe.instance.presentPaymentSheet();
+      await paymentService.presentPaymentSheet();
 
       notifier.nextStep();
     } on StripeException catch (e) {
