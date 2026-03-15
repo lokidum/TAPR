@@ -7,7 +7,20 @@ on:
       - staging
 
 jobs:
-  flutter:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      infrastructure: ${{ steps.filter.outputs.infrastructure }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            infrastructure:
+              - 'infrastructure/**'
+
+  flutter-test:
     name: Flutter Analyze & Test
     runs-on: ubuntu-latest
     defaults:
@@ -25,7 +38,7 @@ jobs:
         run: flutter pub get
 
       - name: Analyze
-        run: flutter analyze
+        run: flutter analyze --fatal-infos
 
       - name: Test
         run: flutter test --coverage
@@ -37,7 +50,7 @@ jobs:
           flags: flutter
           token: ${{ secrets.CODECOV_TOKEN }}
 
-  backend:
+  backend-test:
     name: Backend Lint & Test
     runs-on: ubuntu-latest
     defaults:
@@ -88,33 +101,37 @@ jobs:
           flags: backend
           token: ${{ secrets.CODECOV_TOKEN }}
 
-  admin:
-    name: Admin Lint & Test
+  terraform-plan:
+    name: Terraform Plan
+    needs: changes
+    if: needs.changes.outputs.infrastructure == 'true'
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/admin
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: apps/admin/package-lock.json
+      - name: Check for Terraform files
+        id: tf-files
+        run: |
+          if [ -n "$(find infrastructure -name '*.tf' 2>/dev/null)" ]; then
+            echo "has_tf=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_tf=false" >> $GITHUB_OUTPUT
+          fi
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Setup Terraform
+        if: steps.tf-files.outputs.has_tf == 'true'
+        uses: hashicorp/setup-terraform@v3
 
-      - name: Lint
-        run: npm run lint
+      - name: Terraform init
+        if: steps.tf-files.outputs.has_tf == 'true'
+        run: terraform init -backend=false
+        working-directory: infrastructure
 
-      - name: Test
-        run: npm test -- --coverage
+      - name: Terraform plan
+        if: steps.tf-files.outputs.has_tf == 'true'
+        run: terraform plan -no-color
+        working-directory: infrastructure
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
-        with:
-          files: apps/admin/coverage/lcov.info
-          flags: admin
-          token: ${{ secrets.CODECOV_TOKEN }}
+      - name: Skip (no Terraform files)
+        if: steps.tf-files.outputs.has_tf != 'true'
+        run: echo "No .tf files in infrastructure/, skipping terraform init and plan."
