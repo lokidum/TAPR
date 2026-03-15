@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { verifyAccessToken, AccessTokenPayload } from '../utils/jwt';
+import { getBanned, setBanned } from '../services/redis.service';
+import { prisma } from '../services/prisma.service';
 import { errorResponse, UserRole } from '../types/api';
 
 declare global {
@@ -11,7 +13,7 @@ declare global {
   }
 }
 
-export function authenticate(req: Request, res: Response, next: NextFunction): void {
+export async function authenticate(req: Request, res: Response, next: NextFunction): Promise<void> {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -23,6 +25,24 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
 
   try {
     req.user = verifyAccessToken(token);
+    const userId = req.user.sub;
+
+    const cachedBanned = await getBanned(userId);
+    if (cachedBanned) {
+      res.status(403).json(errorResponse('USER_BANNED', 'User account has been banned'));
+      return;
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { isBanned: true },
+    });
+    if (user?.isBanned) {
+      await setBanned(userId);
+      res.status(403).json(errorResponse('USER_BANNED', 'User account has been banned'));
+      return;
+    }
+
     next();
   } catch (err) {
     if (err instanceof jwt.TokenExpiredError) {

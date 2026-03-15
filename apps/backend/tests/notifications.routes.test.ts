@@ -1,5 +1,11 @@
+jest.mock('ioredis', () => require('ioredis-mock'));
+jest.mock('../src/services/redis.service', () => ({
+  getBanned: jest.fn().mockResolvedValue(false),
+  setBanned: jest.fn().mockResolvedValue(undefined),
+}));
 jest.mock('../src/services/prisma.service', () => ({
   prisma: {
+    user: { findUnique: jest.fn().mockResolvedValue({ isBanned: false }) },
     deviceToken: { upsert: jest.fn() },
     notification: {
       findMany: jest.fn(),

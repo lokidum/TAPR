@@ -1,5 +1,7 @@
+jest.mock('ioredis', () => require('ioredis-mock'));
 jest.mock('../src/services/prisma.service', () => ({
   prisma: {
+    user: { findUnique: jest.fn().mockResolvedValue({ isBanned: false }) },
     barberProfile: { findUnique: jest.fn(), findFirst: jest.fn() },
     partnership: {
       create: jest.fn(),
@@ -14,6 +16,10 @@ jest.mock('../src/services/prisma.service', () => ({
 
 jest.mock('../src/services/docusign.service', () => ({
   createPartnershipEnvelope: jest.fn(),
+}));
+jest.mock('../src/services/redis.service', () => ({
+  getBanned: jest.fn().mockResolvedValue(false),
+  setBanned: jest.fn().mockResolvedValue(undefined),
 }));
 
 import request from 'supertest';

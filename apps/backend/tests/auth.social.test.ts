@@ -6,7 +6,7 @@ jest.mock('../src/services/prisma.service', () => ({
   prisma: {
     user: {
       upsert: jest.fn(),
-      findUnique: jest.fn(),
+      findUnique: jest.fn().mockResolvedValue({ isBanned: false }),
     },
   },
 }));
@@ -19,6 +19,8 @@ jest.mock('../src/services/redis.service', () => ({
   getRefreshToken: jest.fn(),
   deleteRefreshToken: jest.fn(),
   deleteAllUserTokens: jest.fn(),
+  getBanned: jest.fn().mockResolvedValue(false),
+  setBanned: jest.fn().mockResolvedValue(undefined),
 }));
 
 import request from 'supertest';

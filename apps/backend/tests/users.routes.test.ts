@@ -9,6 +9,8 @@ jest.mock('../src/services/prisma.service', () => ({
 }));
 jest.mock('../src/services/redis.service', () => ({
   deleteAllUserTokens: jest.fn(),
+  getBanned: jest.fn().mockResolvedValue(false),
+  setBanned: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock('../src/services/storage.service', () => ({
   generateUploadPresignedUrl: jest.fn().mockResolvedValue('https://s3.presigned.example/upload'),

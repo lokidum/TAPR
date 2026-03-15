@@ -1,4 +1,8 @@
 jest.mock('ioredis', () => require('ioredis-mock'));
+jest.mock('../src/services/redis.service', () => ({
+  getBanned: jest.fn().mockResolvedValue(false),
+  setBanned: jest.fn().mockResolvedValue(undefined),
+}));
 jest.mock('../src/services/stripe.service', () => ({
   createConnectAccount: jest.fn().mockResolvedValue({ id: 'acct_new123' }),
   createConnectOnboardingUrl: jest.fn().mockResolvedValue('https://connect.stripe.com/onboarding/abc'),
@@ -23,7 +27,7 @@ jest.mock('../src/services/prisma.service', () => ({
     event: {
       count: jest.fn(),
     },
-    user: { findUnique: jest.fn() },
+    user: { findUnique: jest.fn().mockResolvedValue({ isBanned: false }) },
     $queryRaw: jest.fn(),
     $executeRaw: jest.fn(),
   },

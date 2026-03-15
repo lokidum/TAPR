@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../services/prisma.service';
 import { refundPaymentIntent } from '../services/stripe.service';
-import { deleteAllUserTokens } from '../services/redis.service';
+import { deleteAllUserTokens, setBanned, deleteBanned } from '../services/redis.service';
 import { enqueueNotification } from '../services/queue.service';
 import { authenticate, requireRole } from '../middleware/auth.middleware';
 import { errorResponse, successResponse } from '../types/api';
@@ -121,6 +121,7 @@ router.patch(
       });
 
       await deleteAllUserTokens(id);
+      await setBanned(id);
 
       logger.info('User banned', { userId: id, reason: body.reason });
       res.status(200).json(successResponse({ banned: true }));
@@ -148,6 +149,8 @@ router.patch(
         where: { id },
         data: { isBanned: false, banReason: null },
       });
+
+      await deleteBanned(id);
 
       logger.info('User unbanned', { userId: id });
       res.status(200).json(successResponse({ unbanned: true }));

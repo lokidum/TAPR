@@ -1,6 +1,7 @@
 jest.mock('ioredis', () => require('ioredis-mock'));
 jest.mock('../src/services/prisma.service', () => ({
   prisma: {
+    user: { findUnique: jest.fn().mockResolvedValue({ isBanned: false }) },
     barberProfile: { findUnique: jest.fn(), update: jest.fn() },
     booking: {
       create: jest.fn(),
@@ -16,6 +17,8 @@ jest.mock('../src/services/prisma.service', () => ({
 jest.mock('../src/services/redis.service', () => ({
   getIdempotencyResponse: jest.fn(),
   setIdempotencyResponse: jest.fn(),
+  getBanned: jest.fn().mockResolvedValue(false),
+  setBanned: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock('../src/services/stripe.service', () => ({
   createPaymentIntent: jest.fn(),

@@ -1,6 +1,7 @@
 jest.mock('ioredis', () => require('ioredis-mock'));
 jest.mock('../src/services/prisma.service', () => ({
   prisma: {
+    user: { findUnique: jest.fn().mockResolvedValue({ isBanned: false }) },
     barberProfile: {
       findUnique: jest.fn(),
       findMany: jest.fn(),
@@ -13,6 +14,8 @@ jest.mock('../src/services/prisma.service', () => ({
 }));
 jest.mock('../src/services/redis.service', () => ({
   publishToChannel: jest.fn(),
+  getBanned: jest.fn().mockResolvedValue(false),
+  setBanned: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock('../src/services/storage.service', () => ({
   generateUploadPresignedUrl: jest.fn().mockResolvedValue('https://s3.presigned.example/upload'),

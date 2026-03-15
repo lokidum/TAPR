@@ -16,7 +16,7 @@ jest.mock('../src/services/prisma.service', () => ({
       update: jest.fn(),
     },
     dispute: { create: jest.fn(), findFirst: jest.fn() },
-    user: { findMany: jest.fn() },
+    user: { findUnique: jest.fn().mockResolvedValue({ isBanned: false }), findMany: jest.fn() },
     $queryRaw: jest.fn(),
     $transaction: jest.fn(),
   },
@@ -35,6 +35,8 @@ jest.mock('../src/services/queue.service', () => ({
 }));
 jest.mock('../src/services/redis.service', () => ({
   publishToChannel: jest.fn().mockResolvedValue(undefined),
+  getBanned: jest.fn().mockResolvedValue(false),
+  setBanned: jest.fn().mockResolvedValue(undefined),
 }));
 
 import request from 'supertest';

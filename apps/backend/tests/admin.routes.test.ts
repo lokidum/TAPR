@@ -2,7 +2,7 @@ jest.mock('ioredis', () => require('ioredis-mock'));
 jest.mock('../src/services/prisma.service', () => ({
   prisma: {
     user: {
-      findUnique: jest.fn(),
+      findUnique: jest.fn().mockResolvedValue({ isBanned: false }),
       findMany: jest.fn(),
       update: jest.fn(),
       count: jest.fn(),
@@ -17,6 +17,9 @@ jest.mock('../src/services/prisma.service', () => ({
 }));
 jest.mock('../src/services/redis.service', () => ({
   deleteAllUserTokens: jest.fn().mockResolvedValue(undefined),
+  getBanned: jest.fn().mockResolvedValue(false),
+  setBanned: jest.fn().mockResolvedValue(undefined),
+  deleteBanned: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock('../src/services/stripe.service', () => ({
   refundPaymentIntent: jest.fn().mockResolvedValue({ id: 're_123' }),

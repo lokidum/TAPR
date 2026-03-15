@@ -1,3 +1,13 @@
+jest.mock('../src/services/redis.service', () => ({
+  getBanned: jest.fn().mockResolvedValue(false),
+  setBanned: jest.fn().mockResolvedValue(undefined),
+}));
+jest.mock('../src/services/prisma.service', () => ({
+  prisma: {
+    user: { findUnique: jest.fn().mockResolvedValue({ isBanned: false }) },
+  },
+}));
+
 import request from 'supertest';
 import express, { Router } from 'express';
 import jwt from 'jsonwebtoken';

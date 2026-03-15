@@ -4,6 +4,7 @@ import logger from '../utils/logger';
 const REFRESH_PREFIX = 'refresh:';
 const USER_TOKENS_PREFIX = 'user_tokens:';
 const OTP_PREFIX = 'otp:';
+const BANNED_PREFIX = 'banned:';
 
 let _client: Redis | null = null;
 
@@ -118,6 +119,23 @@ export async function getIdempotencyResponse(key: string): Promise<string | null
 
 export async function publishToChannel(channel: string, message: string): Promise<void> {
   await getRedisClient().publish(channel, message);
+}
+
+// ── Banned user cache ───────────────────────────────────────────────────────
+
+const BANNED_TTL_SECONDS = 300;
+
+export async function setBanned(userId: string, ttlSeconds = BANNED_TTL_SECONDS): Promise<void> {
+  await getRedisClient().setex(`${BANNED_PREFIX}${userId}`, ttlSeconds, '1');
+}
+
+export async function getBanned(userId: string): Promise<boolean> {
+  const val = await getRedisClient().get(`${BANNED_PREFIX}${userId}`);
+  return val === '1';
+}
+
+export async function deleteBanned(userId: string): Promise<void> {
+  await getRedisClient().del(`${BANNED_PREFIX}${userId}`);
 }
 
 // ── Rate limiting ─────────────────────────────────────────────────────────────

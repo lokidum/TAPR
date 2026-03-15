@@ -3,8 +3,13 @@ jest.mock('../src/services/storage.service', () => ({
   generateUploadPresignedUrl: jest.fn().mockResolvedValue('https://s3.presigned.example/events/upload'),
   generateDownloadUrl: jest.fn().mockReturnValue('https://cdn.example.com/events/event-id/cover.jpg'),
 }));
+jest.mock('../src/services/redis.service', () => ({
+  getBanned: jest.fn().mockResolvedValue(false),
+  setBanned: jest.fn().mockResolvedValue(undefined),
+}));
 jest.mock('../src/services/prisma.service', () => ({
   prisma: {
+    user: { findUnique: jest.fn().mockResolvedValue({ isBanned: false }) },
     event: {
       create: jest.fn(),
       findUnique: jest.fn(),
