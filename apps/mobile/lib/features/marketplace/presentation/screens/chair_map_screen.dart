@@ -6,8 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intl/intl.dart';
+import 'package:go_router/go_router.dart';
 import 'package:tapr/core/network/api_exception.dart';
 import 'package:tapr/core/theme/app_colors.dart';
+import 'package:tapr/features/auth/auth_notifier.dart';
 import 'package:tapr/core/theme/app_text_styles.dart';
 import 'package:tapr/features/marketplace/data/chair_marketplace_models.dart';
 import 'package:tapr/features/marketplace/data/chair_marketplace_repository.dart';
@@ -38,7 +40,9 @@ const _darkMapStyle = '''
 ''';
 
 class ChairMapScreen extends ConsumerStatefulWidget {
-  const ChairMapScreen({super.key});
+  const ChairMapScreen({super.key, this.initialChairId});
+
+  final String? initialChairId;
 
   @override
   ConsumerState<ChairMapScreen> createState() => _ChairMapScreenState();
@@ -57,6 +61,48 @@ class _ChairMapScreenState extends ConsumerState<ChairMapScreen> {
     Future.microtask(() {
       ref.read(chairMarketplaceControllerProvider.notifier).loadNearby();
     });
+    if (widget.initialChairId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _handleInitialChairId());
+    }
+  }
+
+  Future<void> _handleInitialChairId() async {
+    final chairId = widget.initialChairId;
+    if (chairId == null || !mounted) return;
+
+    final authState = ref.read(authNotifierProvider);
+    if (authState.role != 'barber') {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('This link is for barbers only'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        context.go(authState.homeRoute);
+      }
+      return;
+    }
+
+    try {
+      final repo = ref.read(chairMarketplaceRepositoryProvider);
+      final raw = await repo.fetchListing(chairId);
+      final listing = NearbyChairListing.fromDetailJson(raw);
+      if (!mounted) return;
+
+      final controllerState = ref.read(chairMarketplaceControllerProvider);
+      _showChairListingSheet(context, ref, listing, controllerState);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not load chair details'),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
   }
 
   @override

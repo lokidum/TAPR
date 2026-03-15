@@ -39,8 +39,12 @@ class ErrorView extends StatelessWidget {
               const SizedBox(height: 24),
               SizedBox(
                 width: 200,
-                child: OutlinedButton.icon(
+                child: ElevatedButton.icon(
                   onPressed: onRetry,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.gold,
+                    foregroundColor: AppColors.background,
+                  ),
                   icon: const Icon(Icons.refresh_rounded, size: 18),
                   label: const Text('Try Again'),
                 ),

@@ -208,7 +208,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: '/barber/marketplace',
                 name: RouteNames.chairMap,
-                builder: (context, state) => const ChairMapScreen(),
+                builder: (context, state) => ChairMapScreen(
+                  initialChairId: state.uri.queryParameters['chairId'],
+                ),
               ),
             ],
           ),

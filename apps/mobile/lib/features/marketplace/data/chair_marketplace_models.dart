@@ -61,6 +61,35 @@ class NearbyChairListing {
     );
   }
 
+  /// Builds from GET /chairs/:id response (listing with nested studio).
+  /// Uses 0 for distanceKm, lat, lng when not available.
+  factory NearbyChairListing.fromDetailJson(Map<String, dynamic> json) {
+    final studio = json['studio'] as Map<String, dynamic>?;
+    final studioName = studio?['businessName'] as String? ?? '';
+
+    return NearbyChairListing(
+      id: json['id'] as String,
+      studioId: json['studioId'] as String,
+      title: json['title'] as String,
+      description: json['description'] as String?,
+      priceCentsPerDay: (json['priceCentsPerDay'] as num).toInt(),
+      priceCentsPerWeek: json['priceCentsPerWeek'] != null
+          ? (json['priceCentsPerWeek'] as num).toInt()
+          : null,
+      availableFrom: DateTime.parse(json['availableFrom'] as String),
+      availableTo: DateTime.parse(json['availableTo'] as String),
+      listingType: json['listingType'] as String,
+      minLevelRequired: (json['minLevelRequired'] as num).toInt(),
+      isSickCall: json['isSickCall'] as bool? ?? false,
+      sickCallPremiumPct: (json['sickCallPremiumPct'] as num?)?.toInt() ?? 0,
+      status: json['status'] as String,
+      studioName: studioName,
+      distanceKm: 0,
+      lat: 0,
+      lng: 0,
+    );
+  }
+
   String get formattedPricePerDay {
     final dollars = priceCentsPerDay ~/ 100;
     final cents = priceCentsPerDay % 100;
