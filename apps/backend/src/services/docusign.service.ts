@@ -147,8 +147,8 @@ export async function createPartnershipEnvelope(
     envelopeDefinition,
   });
 
-  const summary = result.body as docusign.EnvelopeSummary;
-  return { envelopeId: summary.envelopeId ?? '' };
+  const body = result.body as { envelopeId?: string };
+  return { envelopeId: body.envelopeId ?? '' };
 }
 
 export async function downloadSignedDocument(envelopeId: string): Promise<Buffer> {

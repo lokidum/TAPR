@@ -1281,7 +1281,7 @@ router.get(
       const slots = bookings.map((b) => {
         const start = new Date(b.scheduledAt);
         const end = new Date(start.getTime() + b.durationMinutes * 60 * 1000);
-        const pad = (n: number) => n.toString().padStart(2, '0');
+        const pad = (n: number): string => n.toString().padStart(2, '0');
         return {
           startTime: `${pad(start.getUTCHours())}:${pad(start.getUTCMinutes())}`,
           endTime: `${pad(end.getUTCHours())}:${pad(end.getUTCMinutes())}`,

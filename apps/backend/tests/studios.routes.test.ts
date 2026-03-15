@@ -38,6 +38,7 @@ import express from 'express';
 import cookieParser from 'cookie-parser';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../src/services/prisma.service';
+import * as stripeService from '../src/services/stripe.service';
 import studiosRouter from '../src/routes/studios.routes';
 import { errorHandler } from '../src/middleware/errorHandler';
 import { signAccessToken } from '../src/utils/jwt';
@@ -384,8 +385,6 @@ describe('PATCH /api/v1/studios/me', () => {
 // ── GET /studios/me/stripe-onboarding-url ──────────────────────────────────────
 
 describe('GET /api/v1/studios/me/stripe-onboarding-url', () => {
-  const stripeService = require('../src/services/stripe.service');
-
   beforeEach(() => {
     mockUpsert.mockResolvedValue(STUDIO_PROFILE);
     mockFindUnique.mockResolvedValue({ ...STUDIO_PROFILE, stripeAccountId: 'acct_existing' });

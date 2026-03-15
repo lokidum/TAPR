@@ -31,7 +31,7 @@ router.post(
       return;
     }
 
-    const rawBody = req.body;
+    const rawBody = req.body as Buffer | undefined;
     if (!Buffer.isBuffer(rawBody)) {
       res.status(400).json(errorResponse('BAD_REQUEST', 'Invalid webhook body (expected raw buffer)'));
       return;
@@ -66,7 +66,7 @@ router.post(
           await handlePaymentIntentFailed(event);
           break;
         case 'payment_intent.requires_action':
-          await handlePaymentIntentRequiresAction(event);
+          handlePaymentIntentRequiresAction(event);
           break;
         case 'charge.dispute.created':
           await handleDisputeCreated(event);
@@ -138,7 +138,7 @@ async function handlePaymentIntentFailed(event: Stripe.Event): Promise<void> {
   }
 }
 
-async function handlePaymentIntentRequiresAction(event: Stripe.Event): Promise<void> {
+function handlePaymentIntentRequiresAction(event: Stripe.Event): void {
   const pi = event.data.object as Stripe.PaymentIntent;
   logger.info('PaymentIntent requires action (3DS challenge)', {
     paymentIntentId: pi.id,
@@ -223,7 +223,7 @@ router.post(
       return;
     }
 
-    const rawBody = req.body;
+    const rawBody = req.body as unknown;
     if (!Buffer.isBuffer(rawBody)) {
       res.status(400).json(errorResponse('BAD_REQUEST', 'Invalid webhook body (expected raw buffer)'));
       return;

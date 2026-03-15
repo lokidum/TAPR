@@ -5,6 +5,7 @@ import { getBanned, setBanned } from '../services/redis.service';
 import { prisma } from '../services/prisma.service';
 import { errorResponse, UserRole } from '../types/api';
 
+/* eslint-disable @typescript-eslint/no-namespace */
 declare global {
   namespace Express {
     interface Request {
@@ -12,6 +13,7 @@ declare global {
     }
   }
 }
+/* eslint-enable @typescript-eslint/no-namespace */
 
 export async function authenticate(req: Request, res: Response, next: NextFunction): Promise<void> {
   const authHeader = req.headers.authorization;

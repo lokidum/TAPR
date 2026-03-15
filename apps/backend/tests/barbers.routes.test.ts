@@ -34,6 +34,7 @@ import cookieParser from 'cookie-parser';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../src/services/prisma.service';
 import * as redisService from '../src/services/redis.service';
+import * as stripeService from '../src/services/stripe.service';
 import barbersRouter from '../src/routes/barbers.routes';
 import { errorHandler } from '../src/middleware/errorHandler';
 import { signAccessToken } from '../src/utils/jwt';
@@ -385,8 +386,6 @@ describe('POST /api/v1/barbers/me/cert-upload-url', () => {
 // ── GET /barbers/me/stripe-onboarding-url ──────────────────────────────────────
 
 describe('GET /api/v1/barbers/me/stripe-onboarding-url', () => {
-  const stripeService = require('../src/services/stripe.service');
-
   beforeEach(() => {
     mockFindUnique.mockResolvedValue({ ...BARBER_PROFILE, stripeAccountId: 'acct_existing' });
   });

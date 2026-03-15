@@ -414,7 +414,7 @@ router.get(
             },
             _sum: { totalPriceCents: true },
           }),
-          (() => {
+          ((): number => {
             let count = 0;
             const d = new Date(startOfMonth);
             while (d <= now) {
