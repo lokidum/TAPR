@@ -1,4 +1,8 @@
 jest.mock('ioredis', () => require('ioredis-mock'));
+jest.mock('../src/services/storage.service', () => ({
+  generateUploadPresignedUrl: jest.fn().mockResolvedValue('https://s3.presigned.example/events/upload'),
+  generateDownloadUrl: jest.fn().mockReturnValue('https://cdn.example.com/events/event-id/cover.jpg'),
+}));
 jest.mock('../src/services/prisma.service', () => ({
   prisma: {
     event: {
@@ -9,8 +13,12 @@ jest.mock('../src/services/prisma.service', () => ({
       update: jest.fn(),
     },
     eventAttendee: {
+      findMany: jest.fn(),
       upsert: jest.fn(),
       deleteMany: jest.fn(),
+    },
+    studioProfile: {
+      findUnique: jest.fn(),
     },
     $executeRaw: jest.fn(),
     $queryRaw: jest.fn(),
@@ -26,14 +34,17 @@ import { signAccessToken } from '../src/utils/jwt';
 
 const mockEventCreate = (prisma.event as jest.Mocked<typeof prisma.event>).create as jest.Mock;
 const mockEventFindUnique = (prisma.event as jest.Mocked<typeof prisma.event>).findUnique as jest.Mock;
-const mockEventFindMany = (prisma.event as jest.Mocked<typeof prisma.event>).findMany as jest.Mock;
-const mockEventCount = (prisma.event as jest.Mocked<typeof prisma.event>).count as jest.Mock;
 const mockEventUpdate = (prisma.event as jest.Mocked<typeof prisma.event>).update as jest.Mock;
 const mockEventAttendeeUpsert = (prisma.eventAttendee as jest.Mocked<typeof prisma.eventAttendee>)
   .upsert as jest.Mock;
+const mockEventAttendeeFindMany = (prisma.eventAttendee as jest.Mocked<typeof prisma.eventAttendee>)
+  .findMany as jest.Mock;
 const mockEventAttendeeDeleteMany = (prisma.eventAttendee as jest.Mocked<typeof prisma.eventAttendee>)
   .deleteMany as jest.Mock;
 const mockExecuteRaw = (prisma as jest.Mocked<typeof prisma>).$executeRaw as jest.Mock;
+const mockQueryRaw = (prisma as jest.Mocked<typeof prisma>).$queryRaw as jest.Mock;
+const mockStudioProfileFindUnique = (prisma.studioProfile as jest.Mocked<typeof prisma.studioProfile>)
+  .findUnique as jest.Mock;
 
 function buildApp(): express.Express {
   const app = express();
@@ -59,6 +70,7 @@ afterAll(() => {
 beforeEach(() => {
   jest.clearAllMocks();
   mockExecuteRaw.mockResolvedValue(1);
+  mockStudioProfileFindUnique.mockResolvedValue(null);
 });
 
 function studioToken(): string {
@@ -170,42 +182,58 @@ describe('POST /api/v1/events', () => {
   });
 });
 
+const LIST_ROW = {
+  id: EVENT_ID,
+  studio_id: null,
+  organizer_user_id: STUDIO_USER_ID,
+  title: 'Barber Workshop 2025',
+  description: 'Learn advanced techniques',
+  event_type: 'workshop',
+  location_address: '123 Main St, Sydney',
+  google_place_id: null,
+  cover_image_url: null,
+  starts_at: new Date('2025-07-15T10:00:00Z'),
+  ends_at: new Date('2025-07-15T18:00:00Z'),
+  max_attendees: 50,
+  ticket_price_cents: 2500,
+  has_food_trucks: true,
+  status: 'planning',
+  created_at: new Date(),
+  lat: -33.8688,
+  lng: 151.2093,
+};
+
 describe('GET /api/v1/events', () => {
   it('200 — returns paginated events without geo', async () => {
-    mockEventFindMany.mockResolvedValue([CREATED_EVENT]);
-    mockEventCount.mockResolvedValue(1);
+    mockQueryRaw
+      .mockResolvedValueOnce([LIST_ROW])
+      .mockResolvedValueOnce([{ count: 1n }]);
 
     const res = await request(buildApp()).get('/api/v1/events');
 
     expect(res.status).toBe(200);
     expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0]).toMatchObject({
+      id: EVENT_ID,
+      title: 'Barber Workshop 2025',
+      coverImageUrl: null,
+      lat: -33.8688,
+      lng: 151.2093,
+    });
     expect(res.body.meta?.pagination).toBeDefined();
-    expect(mockEventFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ status: { not: 'cancelled' } }),
-        orderBy: { startsAt: 'asc' },
-      })
-    );
+    expect(mockQueryRaw).toHaveBeenCalledTimes(2);
   });
 
   it('200 — filters by type and date range', async () => {
-    mockEventFindMany.mockResolvedValue([]);
-    mockEventCount.mockResolvedValue(0);
+    mockQueryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([{ count: 0n }]);
 
     const res = await request(buildApp())
       .get('/api/v1/events')
       .query({ type: 'workshop', from: '2025-07-01T00:00:00Z', to: '2025-07-31T23:59:59Z' });
 
     expect(res.status).toBe(200);
-    expect(mockEventFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          eventType: 'workshop',
-          startsAt: { gte: expect.any(Date) },
-          endsAt: { lte: expect.any(Date) },
-        }),
-      })
-    );
+    expect(res.body.data).toHaveLength(0);
+    expect(mockQueryRaw).toHaveBeenCalledTimes(2);
   });
 
   it('400 — lat without lng', async () => {
@@ -215,19 +243,29 @@ describe('GET /api/v1/events', () => {
 });
 
 describe('GET /api/v1/events/:id', () => {
-  it('200 — returns event with attendee count', async () => {
+  it('200 — returns event with attendee count, lat, lng, attendees', async () => {
     mockEventFindUnique.mockResolvedValue({
       ...CREATED_EVENT,
       studio: null,
       organizer: { fullName: 'Organizer', avatarUrl: null },
       _count: { attendees: 12 },
     });
+    mockQueryRaw.mockResolvedValue([{ lat: -33.8688, lng: 151.2093 }]);
+    mockEventAttendeeFindMany.mockResolvedValue([
+      { user: { id: 'u1', avatarUrl: null, fullName: 'Alice Smith' } },
+      { user: { id: 'u2', avatarUrl: 'https://cdn.example.com/a.jpg', fullName: 'Bob' } },
+    ]);
 
     const res = await request(buildApp()).get(`/api/v1/events/${EVENT_ID}`);
 
     expect(res.status).toBe(200);
     expect(res.body.data.attendeeCount).toBe(12);
     expect(res.body.data.title).toBe('Barber Workshop 2025');
+    expect(res.body.data.lat).toBe(-33.8688);
+    expect(res.body.data.lng).toBe(151.2093);
+    expect(res.body.data.attendees).toHaveLength(2);
+    expect(res.body.data.attendees[0]).toMatchObject({ userId: 'u1', firstName: 'Alice' });
+    expect(res.body.data.attendees[1]).toMatchObject({ userId: 'u2', firstName: 'Bob' });
   });
 
   it('404 — event not found', async () => {
@@ -414,5 +452,58 @@ describe('PATCH /api/v1/events/:id', () => {
       .send({ title: 'Updated' });
 
     expect(res.status).toBe(404);
+  });
+});
+
+describe('POST /api/v1/events/:id/cover-image-upload-url', () => {
+  it('401 — requires auth', async () => {
+    const res = await request(buildApp())
+      .post(`/api/v1/events/${EVENT_ID}/cover-image-upload-url`)
+      .send({ fileName: 'cover.jpg', mimeType: 'image/jpeg' });
+    expect(res.status).toBe(401);
+  });
+
+  it('404 — event not found', async () => {
+    mockEventFindUnique.mockResolvedValue(null);
+
+    const res = await request(buildApp())
+      .post(`/api/v1/events/${EVENT_ID}/cover-image-upload-url`)
+      .set('Authorization', `Bearer ${organizerToken()}`)
+      .send({ fileName: 'cover.jpg', mimeType: 'image/jpeg' });
+
+    expect(res.status).toBe(404);
+  });
+
+  it('403 — non-organizer cannot upload', async () => {
+    mockEventFindUnique.mockResolvedValue({
+      ...CREATED_EVENT,
+      organizerUserId: ORGANIZER_USER_ID,
+    });
+
+    const res = await request(buildApp())
+      .post(`/api/v1/events/${EVENT_ID}/cover-image-upload-url`)
+      .set('Authorization', `Bearer ${consumerToken()}`)
+      .send({ fileName: 'cover.jpg', mimeType: 'image/jpeg' });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('200 — organizer gets presigned URL', async () => {
+    mockEventFindUnique.mockResolvedValue({
+      ...CREATED_EVENT,
+      organizerUserId: ORGANIZER_USER_ID,
+    });
+
+    const res = await request(buildApp())
+      .post(`/api/v1/events/${EVENT_ID}/cover-image-upload-url`)
+      .set('Authorization', `Bearer ${organizerToken()}`)
+      .send({ fileName: 'cover.jpg', mimeType: 'image/jpeg' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toMatchObject({
+      uploadUrl: 'https://s3.presigned.example/events/upload',
+      cdnUrl: 'https://cdn.example.com/events/event-id/cover.jpg',
+    });
+    expect(res.body.data.key).toMatch(/^events\/event-uuid-123\/.+\.jpg$/);
   });
 });

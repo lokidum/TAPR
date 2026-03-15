@@ -372,6 +372,7 @@ model Event {
   permitNumber            String?     @map("permit_number")
   permitAcquiredAt        DateTime?   @map("permit_acquired_at") @db.Timestamptz
   insuranceCertificateUrl String?     @map("insurance_certificate_url")
+  coverImageUrl           String?     @map("cover_image_url")
   status                  EventStatus @default(planning)
   createdAt               DateTime    @default(now()) @map("created_at") @db.Timestamptz
 

@@ -30,6 +30,7 @@ class RouteNames {
   static const studioChairs = 'studio-chairs';
   static const talentScout = 'talent-scout';
   static const studioEvents = 'studio-events';
+  static const createEvent = 'create-event';
   static const studioProfile = 'studio-profile';
 
   // Shared

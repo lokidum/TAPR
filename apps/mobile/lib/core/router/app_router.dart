@@ -19,8 +19,8 @@ import 'package:tapr/features/booking/presentation/screens/booking_detail_screen
 import 'package:tapr/features/booking/screens/booking_history_screen.dart';
 import 'package:tapr/features/booking/presentation/screens/booking_screen.dart';
 import 'package:tapr/features/discover/presentation/screens/discover_screen.dart';
-import 'package:tapr/features/events/screens/event_detail_screen.dart';
-import 'package:tapr/features/events/screens/events_screen.dart';
+import 'package:tapr/features/events/presentation/screens/event_detail_screen.dart';
+import 'package:tapr/features/events/presentation/screens/events_screen.dart';
 import 'package:tapr/features/legal/presentation/screens/legal_hub_screen.dart';
 import 'package:tapr/features/marketplace/screens/marketplace_screen.dart';
 import 'package:tapr/features/notifications/presentation/screens/notifications_screen.dart';
@@ -28,7 +28,8 @@ import 'package:tapr/features/profile/presentation/screens/profile_screen.dart';
 import 'package:tapr/features/studio/presentation/screens/chair_manager_screen.dart';
 import 'package:tapr/features/studio/presentation/screens/studio_dashboard_screen.dart';
 import 'package:tapr/features/studio/presentation/screens/talent_scout_screen.dart';
-import 'package:tapr/features/studio/screens/studio_events_screen.dart';
+import 'package:tapr/features/studio/presentation/screens/create_event_screen.dart';
+import 'package:tapr/features/studio/presentation/screens/studio_events_screen.dart';
 import 'package:tapr/features/studio/screens/studio_public_profile_screen.dart';
 import 'package:tapr/core/services/push_notification_service.dart';
 import 'package:tapr/shared/widgets/error_view.dart';
@@ -270,6 +271,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 path: '/studio/events',
                 name: RouteNames.studioEvents,
                 builder: (context, state) => const StudioEventsScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'create',
+                    name: RouteNames.createEvent,
+                    builder: (context, state) => const CreateEventScreen(),
+                  ),
+                ],
               ),
             ],
           ),
